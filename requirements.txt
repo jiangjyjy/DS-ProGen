@@ -1,0 +1,10 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+numpy==1.26.4
+torch==2.2.2+cu121
+transformers==4.40.0
+biopython==1.83
+pycifrw==4.4.6
+biotite==0.40.0
+fair-esm==2.0.1
+tqdm==4.66.5
+tokenizers==0.19.1
