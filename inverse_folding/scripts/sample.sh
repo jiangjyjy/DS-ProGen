@@ -1,9 +1,11 @@
-python3 ../scripts/sample.py \
-    --model=checkpoints/progen2-small-finetuned/e5 \
+python3 inverse_folding/inverse_folding/sample.py \
+    --model=checkpoints/progen2-base \
+    --rep_model=ckpt/coords_encoder  \
     --device=cuda \
     --batch_size=8 \
     --iters=1 \
     --max_length=512 \
-    --t=1.0 \
+    --t=0.1 \
     --k=10 \
-    --prompt="<|pf03668|>1MEVVIVTGMSGAGK"
+    --prompt="1MEVVIVTGMSGAGK" \
+    --coords='/home/v-yantingli/mmp/coords.pkl'

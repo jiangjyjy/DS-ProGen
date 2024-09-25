@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 class Protein_dataset(Dataset):
-    def __init__(self, lines, tokenizer: Tokenizer):
-        self.lines = lines
+    def __init__(self, lines, tokenizer: Tokenizer, filter_seq_len: int):
+        self.lines = [line for line in lines if len(line['seq']) < filter_seq_len]
         self.tokenizer = tokenizer
 
     def __len__(self):
@@ -195,7 +195,7 @@ def train(
     model: ProGenForCausalLM,
     tokenizer: Tokenizer,
     train_dataset: Protein_dataset,
-    test_dataset: Protein_dataset,
+    valid_dataset: Protein_dataset,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LambdaLR,
     args: argparse.Namespace,
@@ -208,12 +208,12 @@ def train(
         train_losses.append(train_loss)
 
         logger.info(f"Running test set evaluation after {epoch} epochs:")
-        eval_loss = evaluate(model, test_dataset, args)
+        eval_loss = evaluate(model, valid_dataset, args)
         eval_losses.append(eval_loss)
 
         model_name = args.model.strip(os.sep).split(os.sep)[-1]
         if epoch % args.checkpoint_rate == 0 or epoch == args.epochs:
-            checkpoint_path = os.path.join("checkpoints", f"{model_name}-finetuned", f"e{epoch}")
+            checkpoint_path = os.path.join("ckpt", f"{model_name}-finetuned", f"e{epoch}")
             os.makedirs(checkpoint_path, exist_ok=True)
             
             model.save_pretrained(checkpoint_path)
@@ -241,15 +241,15 @@ def main(args: argparse.Namespace):
     tokenizer.enable_truncation(max_length=1024)
 
     train_data, prefixes = load_data(args.train_file)
-    test_data, prefixes_test = load_data(args.test_file)
+    valid_data, prefixes_test = load_data(args.test_file)
     logger.info(f"Found prefixes: {prefixes}")
     assert prefixes == prefixes_test, "Prefixes in train and test data must be the same"
     tokenizer.add_tokens(prefixes)
 
-    train_data = Protein_dataset(train_data, tokenizer)
-    test_data = Protein_dataset(test_data, tokenizer)
+    train_data = Protein_dataset(train_data, tokenizer, filter_seq_len=512)
+    valid_data = Protein_dataset(valid_data, tokenizer, filter_seq_len=512)
     logger.debug(f"Train data size: {len(train_data)}")
-    logger.debug(f"Test data size: {len(test_data)}")
+    logger.debug(f"Test data size: {len(valid_data)}")
 
     if args.device == "cuda" and not torch.cuda.is_available():
         logger.warning("CUDA not available. Falling back to CPU. Please consider using a GPU for training.")
@@ -278,14 +278,14 @@ def main(args: argparse.Namespace):
 
     if args.eval_before_train:
         logger.info("Runnning evaluation on test set before training...")
-        evaluate(model, test_data, args, before_train=True)
+        evaluate(model, valid_data, args, before_train=True)
 
     # training loop
     model, train_losses, test_losses = train(
         model,
         tokenizer,
         train_data,
-        test_data,
+        valid_data,
         optimizer,
         scheduler,
         args,

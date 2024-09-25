@@ -1,10 +1,10 @@
-python3 ../scripts/finetune.py \
-    --model=checkpoints/progen2-small-finetuned/e5 \
-    --train_file=/home/v-yantingli/progen2/inverse_folding/test.pkl \
-    --test_file=/home/v-yantingli/progen2/inverse_folding/test.pkl \
+python3 inverse_folding/inverse_folding/finetune.py \
+    --model=checkpoints/progen2-small \
+    --train_file=/home/v-yantingli/mmp/data/processed_data/train.pkl \
+    --test_file=/home/v-yantingli/mmp/data/processed_data/valid.pkl \
     --device=cuda \
     --epochs=5 \
-    --batch_size=5 \
+    --batch_size=4 \
     --accumulation_steps=2 \
     --lr=1e-4 \
     --decay=cosine \

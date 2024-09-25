@@ -10,7 +10,8 @@ from typing import Optional, Union
 from tokenizers import Tokenizer, Encoding
 from models.progen import ProGenForCausalLM
 from typing import List
-
+from data.util import load_model
+import pickle
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -19,9 +20,11 @@ logger = logging.getLogger(__name__)
 @torch.no_grad()
 def sample(
     model: ProGenForCausalLM,
+    rep_model,
     tokenizer: Tokenizer,
     device: torch.device,
     prompt: Union[str, torch.Tensor],
+    coords: Optional[torch.Tensor],
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
@@ -31,28 +34,49 @@ def sample(
     Generate samples from the model given a prompt. Using top-k sampling with temperature.
     """
     model.eval()
+    rep_model.eval()
+
+    seq_len = coords.shape[0] if coords is not None else 0
 
     if isinstance(prompt, str):
         encoding: Encoding = tokenizer.encode(prompt)
         ids = torch.tensor(encoding.ids)                             # (T,)
         ids = ids[:len(torch.nonzero(ids))]
-
+        rep_ids =  torch.zeros(seq_len)
+        ids = torch.cat((rep_ids, ids))
         x = torch.zeros((num_return_sequences, ids.shape[0]))        # (B, T)
         x = x + ids
         x = x.to(device).to(torch.int32)
     # prompt is a tensor of token ids, with shape (B, T), in case of bidi smapling
     elif isinstance(prompt, torch.Tensor):
         x = prompt.to(device).to(torch.int32)                        # (B, T)
+        # add rep_ids here
     else:
         raise ValueError("Prompt should be either string or torch.Tensor")
 
     past_key_values = None
     generated = x
 
+    if coords is None:
+        input_dict = {'input_ids': x}
+    else:
+        rep = rep_model.encode(coords, device=device)
+        rep = rep.unsqueeze(0).expand(num_return_sequences, -1, -1)
+        rep_mask = torch.zeros((num_return_sequences, ids.shape[0])) 
+        rep_mask[:, :seq_len] = 1
+        rep_mask = rep_mask.to(device).to(torch.int32)
+        seq_len = torch.full((num_return_sequences,), seq_len).to(device).to(torch.int32)
+
+        input_dict = {'input_ids': x,
+                    'input_rep': rep,
+                    'input_rep_mask': rep_mask,
+                    'seq_len': seq_len,
+                    }
+
     pbar = tqdm(total=max_length - generated.shape[-1])
     while generated.shape[-1] < max_length:
         # using cached attn outputs from previous iterations
-        output = model(x, past_key_values=past_key_values)
+        output = model(input_dict, past_key_values=past_key_values)
         past_key_values = output.past_key_values
         logits = output.logits                                       # (B, T, V)
         # get logits only for the last token
@@ -62,7 +86,8 @@ def sample(
             v, _ = torch.topk(logits, top_k, dim=-1)                 # (B, k)
             logits = torch.where(logits >= v[:, -1:], logits, torch.tensor(-1e9, dtype=torch.float).to('cuda'))  # (B, V)
         probs = torch.softmax(logits, dim=-1)                        # (B, V)
-        x = torch.multinomial(probs, num_samples=1)                  # (B, 1)
+        x = torch.multinomial(probs, num_samples=1)                 # (B, 1)
+        input_dict = {'input_ids': x}                  
         generated = torch.cat([generated, x], dim=-1)                # (B, T+1)
         pbar.update()
     pbar.close()
@@ -148,24 +173,32 @@ def main(args):
 
     logger.info(f"Loading model from {args.model}")
     model = ProGenForCausalLM.from_pretrained(args.model).to(device)
+    rep_model = load_model(args.rep_model, device=device)
     logger.debug("Model loaded.")
 
     logger.info("Loading tokenizer")
     def create_tokenizer_custom(file):
         with open(file, 'r') as f:
             return Tokenizer.from_str(f.read())
-    tokenizer = create_tokenizer_custom(file='checkpoints/progen2-small-finetuned/e5/tokenizer.json')
+    tokenizer = create_tokenizer_custom(file=os.path.join(args.model,'tokenizer.json'))
     # tokenizer: Tokenizer = Tokenizer.from_pretrained(args.model)
     tokenizer.no_padding()
     logger.debug("Tokenizer loaded.")
     logger.debug(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
     logger.debug(f"Tokenizer vocab: {tokenizer.get_vocab()}")
 
+    
+    if args.coords:
+        with open(args.coords, 'rb') as f:
+            coords = pickle.load(f)
+    else:
+        coords = None
+
     samples_dir = os.path.join("generated_samples", args.model.split("/")[-1])
     os.makedirs(samples_dir, exist_ok=True)
     output_file = os.path.join(samples_dir, f"samples_ctx{args.prompt}_k{args.k}_t{args.t}.fa")
 
-    if args.k == 0 or args.k > model.config.vocab_size_lm_head:
+    if args.k == 0 or args.k > model.config.vocab_size:
         args.k = None
 
     logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
@@ -182,9 +215,11 @@ def main(args):
             logger.info(f"Sampling batch {i+1} / {args.iters}")
             samples = sample(
                 model=model,
+                rep_model=rep_model,
                 tokenizer=tokenizer,
                 device=device,
                 prompt=args.prompt,
+                coords=coords,
                 num_return_sequences=args.batch_size,
                 temperature=args.t,
                 max_length=args.max_length,
@@ -217,14 +252,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="hugohrban/progen2-small-mix7",
-        help="Hugging Face model name or path to the model directory. If path, should contain tokenizer.json, config.json and pytorch_model.bin. Default: hugohrban/progen2-small-mix7",
+        default="/home/v-yantingli/mmp/checkpoints/progen2-small",
+        help="Hugging Face model name or path to the model directory. If path, should contain tokenizer.json, config.json and pytorch_model.bin.",
     )
+    parser.add_argument(
+        "--rep_model",
+        type=str,
+        default="/home/v-yantingli/mmp/ckpt/coords_encoder",
+    )  
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
         "--prompt",
         type=str,
         default="1",
+        help="Fixed initial part of sequence we continue the generation from.",
+    )
+    parser.add_argument(
+        "--coords",
+        type=str,
+        default=None,
         help="Fixed initial part of sequence we continue the generation from.",
     )
     parser.add_argument(

@@ -12,7 +12,10 @@ from transformers.modeling_outputs import (
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
-from .configuration_progen import ProGenConfig
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config.configuration_progen import ProGenConfig
 from .util import CoordMLP
 
 
@@ -53,7 +56,7 @@ class ProGenAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
 
-        max_positions = config.n_positions
+        max_positions = config.max_position_embeddings
         self.register_buffer(
             "bias",
             torch.tril(
@@ -66,8 +69,8 @@ class ProGenAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
-        self.embed_dim = config.embed_dim
-        self.num_attention_heads = config.n_head
+        self.embed_dim = config.hidden_size
+        self.num_attention_heads = config.num_attention_heads
         self.head_dim = self.embed_dim // self.num_attention_heads
         if self.head_dim * self.num_attention_heads != self.embed_dim:
             raise ValueError(
@@ -228,7 +231,7 @@ class ProGenMLP(nn.Module):
         self, intermediate_size, config
     ):  # in MLP: intermediate_size= 4 * embed_dim
         super().__init__()
-        embed_dim = config.embed_dim
+        embed_dim = config.n_embd
 
         self.fc_in = nn.Linear(embed_dim, intermediate_size)
         self.fc_out = nn.Linear(intermediate_size, embed_dim)
@@ -247,8 +250,8 @@ class ProGenMLP(nn.Module):
 class ProGenBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
-        inner_dim = config.n_inner if config.n_inner is not None else 4 * config.embed_dim
-        self.ln_1 = nn.LayerNorm(config.embed_dim, eps=config.layer_norm_epsilon)
+        inner_dim = config.n_inner if config.n_inner is not None else 4 * config.n_embd
+        self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
         self.attn = ProGenAttention(config)
         self.mlp = ProGenMLP(inner_dim, config)
 
@@ -318,15 +321,15 @@ class ProGenPreTrainedModel(PreTrainedModel):
 class ProGenModel(ProGenPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-        self.vocab_size_emb = config.vocab_size_emb
-        self.embed_dim = config.embed_dim
-        self.wte = nn.Embedding(config.vocab_size_emb, self.embed_dim)
+        self.vocab_size_emb = config.vocab_size
+        self.embed_dim = config.n_embd
+        self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.rep_emb_encoder = CoordMLP(512, self.embed_dim, self.embed_dim)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.h = nn.ModuleList([ProGenBlock(config) for _ in range(config.n_layer)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
         self.rotary_dim = min(
-            config.rotary_dim, config.n_positions // config.n_head
+            config.rotary_dim, config.n_ctx // config.num_attention_heads
         )
         self.init_weights()
 
@@ -394,7 +397,7 @@ class ProGenModel(ProGenPreTrainedModel):
         input_ids = input_batch.get('input_ids', None)
         input_rep_mask = input_batch.get('input_rep_mask',None)
         input_rep = input_batch.get('input_rep', None)
-        seq_len = input_batch.get('seq_len', None)
+        input_seq_len = input_batch.get('seq_len', None)
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError(
@@ -460,11 +463,12 @@ class ProGenModel(ProGenPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
-            if inputs_embeds.shape[1]==input_rep_mask.shape[1] and input_rep is not None and input_rep_mask is not None:
-                rep_embeds = self.rep_emb_encoder(input_rep)
-                sliced_rep_embeds = [rep_embeds[i, :seq_len[i], :] for i in range(rep_embeds.size(0))]
-                rep_embeds = torch.cat(sliced_rep_embeds, dim=0)
-                inputs_embeds[input_rep_mask.bool()] = rep_embeds
+            if input_rep is not None and input_rep_mask is not None and input_seq_len is not None:
+                # if inputs_embeds.shape[1] == input_rep_mask.shape[1]:
+                    rep_embeds = self.rep_emb_encoder(input_rep)
+                    sliced_rep_embeds = [rep_embeds[i, :input_seq_len[i], :] for i in range(rep_embeds.size(0))]
+                    rep_embeds = torch.cat(sliced_rep_embeds, dim=0)
+                    inputs_embeds[input_rep_mask.bool()] = rep_embeds
                 
 
 
@@ -581,7 +585,7 @@ class ProGenForCausalLM(ProGenPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.transformer = ProGenModel(config)
-        self.lm_head = nn.Linear(config.embed_dim, config.vocab_size_lm_head)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size)
         self.init_weights()
 
         # Model parallel
