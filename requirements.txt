@@ -8,3 +8,4 @@ biotite==0.40.0
 fair-esm==2.0.1
 tqdm==4.66.5
 tokenizers==0.19.1
+wandb==0.18.1

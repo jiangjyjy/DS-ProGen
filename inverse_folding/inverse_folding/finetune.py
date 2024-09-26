@@ -17,10 +17,11 @@ from tqdm import tqdm
 import logging
 from typing import List, Tuple
 from models.progen import ProGenForCausalLM
+import wandb
+
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-
 
 class Protein_dataset(Dataset):
     def __init__(self, lines, tokenizer: Tokenizer, filter_seq_len: int):
@@ -88,7 +89,7 @@ def init_new_embeddings(model: ProGenForCausalLM, prefixes: List[str]):
     if len(prefixes) <= 2:
         logger.info("No new embeddings to initialize.")
         return
-    new_embs = torch.zeros((len(prefixes) - 2, model.config.embed_dim)).to(model.device)
+    new_embs = torch.zeros((len(prefixes) - 2, model.config.embed_dim)).to(model.transformer.wte.weight.device)
 
     unk_token_emb: torch.Tensor = model.transformer.wte.weight[-1].detach()
     mean_unk_emb = torch.zeros_like(new_embs) + unk_token_emb.mean()
@@ -147,8 +148,8 @@ def train_epoch(
     pbar = tqdm(total=len(dataloader) // args.accumulation_steps)
     batch: dict
     for i, batch in enumerate(dataloader):
-        batch = {k: v.to(model.device) for k, v in batch.items()}
-        loss: torch.Tensor = model(batch, labels=batch['label']).loss
+        batch = {k: v.to(next(model.parameters()).device) for k, v in batch.items()}
+        loss: torch.Tensor = model(batch, labels=batch['input_ids'].long()).loss
         loss = loss / args.accumulation_steps
         loss.backward()
         total_loss = total_loss + loss.item()
@@ -182,7 +183,7 @@ def evaluate(
     pbar = tqdm(total=total_length)
     batch: torch.Tensor
     for batch in dataloader:
-        batch = {k: v.to(model.device) for k, v in batch.items()}
+        batch = {k: v.to(next(model.parameters()).device) for k, v in batch.items()}
         loss: torch.Tensor = model(batch, labels=batch['label']).loss
         total_loss += loss.item()
         pbar.update()
@@ -206,13 +207,18 @@ def train(
         logger.info(f"Start time of epoch {epoch}: {datetime.now()}")
         train_loss = train_epoch(model, train_dataset, optimizer, scheduler, epoch, args)
         train_losses.append(train_loss)
-
-        logger.info(f"Running test set evaluation after {epoch} epochs:")
-        eval_loss = evaluate(model, valid_dataset, args)
-        eval_losses.append(eval_loss)
-
+        wandb.log({"epoch": epoch,
+                   "train_loss": train_loss,
+                   "learning rate": scheduler.get_last_lr()[0],
+                  })
+        if epoch % args.eval_steps == 0 or epoch == args.epochs:
+            logger.info(f"Running test set evaluation after {epoch} epochs:")
+            eval_loss = evaluate(model, valid_dataset, args)
+            eval_losses.append(eval_loss)
+            wandb.log({"eval_loss": eval_loss,
+                      })
         model_name = args.model.strip(os.sep).split(os.sep)[-1]
-        if epoch % args.checkpoint_rate == 0 or epoch == args.epochs:
+        if epoch % args.checkpoint_steps == 0 or epoch == args.epochs:
             checkpoint_path = os.path.join("ckpt", f"{model_name}-finetuned", f"e{epoch}")
             os.makedirs(checkpoint_path, exist_ok=True)
             
@@ -232,6 +238,10 @@ def main(args: argparse.Namespace):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
+
+    args_dict = vars(args)
+    wandb.init(project="mmp-if")
+    wandb.config.update(args_dict)
 
     # loading data and tokenizer
     def create_tokenizer_custom(file):
@@ -258,11 +268,14 @@ def main(args: argparse.Namespace):
         device = torch.device(args.device)
     logger.info(f"Device: {device}")
 
-    logger.debug(f"hyperparameters: effective batch={args.batch_size * args.accumulation_steps}, {args.batch_size=}, {args.accumulation_steps=}, {args.epochs=}, {args.lr=}, {args.warmup_steps=}, {args.checkpoint_rate=}")
+    logger.debug(f"hyperparameters: effective batch={args.batch_size * args.accumulation_steps}, {args.batch_size=}, {args.accumulation_steps=}, {args.epochs=}, {args.lr=}, {args.warmup_steps=}, {args.checkpoint_steps=}")
 
     # loading model
     logger.info(f"Loading model: {args.model}...")
-    model = ProGenForCausalLM.from_pretrained(args.model).to(device)
+    if not args.model_parallel:
+        model = ProGenForCausalLM.from_pretrained(args.model).to(device)
+    else:
+        model = ProGenForCausalLM.from_pretrained(args.model).parallelize()
     logger.info(f"Model loaded. Parameter count: {model.num_parameters() // 1e6} M")
     init_new_embeddings(model, prefixes)
 
@@ -278,7 +291,11 @@ def main(args: argparse.Namespace):
 
     if args.eval_before_train:
         logger.info("Runnning evaluation on test set before training...")
-        evaluate(model, valid_data, args, before_train=True)
+        eval_loss_0 = evaluate(model, valid_data, args, before_train=True)
+        wandb.log({"epoch": 0,
+                    "eval_loss": eval_loss_0,
+                        })
+        
 
     # training loop
     model, train_losses, test_losses = train(
@@ -294,6 +311,7 @@ def main(args: argparse.Namespace):
     logger.info("Finetuning finished.")
     logger.info(f"Train losses: {train_losses}")
     logger.info(f"Test losses: {test_losses}")
+    wandb.finish()
 
 
 if __name__ == "__main__":
@@ -344,7 +362,10 @@ if __name__ == "__main__":
         help="Number of warmup steps for learning rate scheduler. Linearly increasing form 0 to --lr. Default: 200",
     )
     parser.add_argument(
-        "--checkpoint_rate", type=int, default=5, help="Save model checkpoint every n epochs. Default: 5"
+        "--checkpoint_steps", type=int, default=5, help="Save model checkpoint every n epochs. Default: 5"
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, default=1, help="Save model checkpoint every n epochs. Default: 5"
     )
     parser.add_argument(
         "--decay",
@@ -370,6 +391,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enable debug logging level.",
+    )
+    parser.add_argument(
+        "--model_parallel",
+        action="store_true",
+        default=False,
+        help="Train on multi gpu. default: False",
     )
     args = parser.parse_args()
 

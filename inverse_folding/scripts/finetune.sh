@@ -9,4 +9,6 @@ python3 inverse_folding/inverse_folding/finetune.py \
     --lr=1e-4 \
     --decay=cosine \
     --warmup_steps=200 \
-    --eval_before_train
+    --eval_steps=1 \
+    --eval_before_train \
+    # --model_parallel
