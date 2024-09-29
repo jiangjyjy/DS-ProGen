@@ -38,8 +38,10 @@ class Protein_dataset(Dataset):
         item['input_rep'] = line['rep']
         seq = line['seq']
         seq = torch.tensor(self.tokenizer.encode(f'1{seq}2').ids)
-        rep_x =  torch.zeros(len(line['seq']))
-        item['input_ids'] = torch.cat((rep_x, seq)).to(torch.int32)
+        sec_struc = ''.join([f'<{s}>' for s in line['sec_struc']])
+        sec_struc =  torch.tensor(self.tokenizer.encode(sec_struc).ids)
+        assert len(sec_struc) == len(line['seq'])
+        item['input_ids'] = torch.cat((sec_struc, seq)).to(torch.int32)
         rep_mask = torch.ones(len(line['seq'])+seq.shape[0])
         rep_mask[len(line['seq']):] = 0
         item['input_rep_mask'] = rep_mask.to(torch.int32)
@@ -65,7 +67,7 @@ def collate_fn(batch):
     padded_input_ids = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_ids])
     padded_input_rep_mask = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_rep_mask])
     padded_labels = torch.stack([torch.cat([x, torch.full((max_len - x.size(0),), -100, dtype=torch.int32)]) for x in labels])
-    padded_input_rep = torch.stack([torch.cat([x, torch.zeros(max_rep_len - x.size(0), 512)]) for x in input_rep])
+    padded_input_rep = torch.stack([torch.cat([x, torch.zeros(max_rep_len - x.size(0), x.size(1))]) for x in input_rep])
     
     # Return the batch as a dictionary
     return {
@@ -79,9 +81,13 @@ def collate_fn(batch):
 
 def load_data(file: str) -> Tuple[List[str], List[str]]:
     lines = []
-    prefixes = []
+    prefixes = set()
     with open(file, "rb") as f:
         lines = pickle.load(f)
+        for line in lines:
+            for s in line['sec_struc']:
+                prefixes.add(f'<{s}>')
+    prefixes = sorted(list(prefixes))
     return lines, prefixes
 
 
@@ -89,7 +95,7 @@ def init_new_embeddings(model: ProGenForCausalLM, prefixes: List[str]):
     if len(prefixes) <= 2:
         logger.info("No new embeddings to initialize.")
         return
-    new_embs = torch.zeros((len(prefixes) - 2, model.config.embed_dim)).to(model.transformer.wte.weight.device)
+    new_embs = torch.zeros((len(prefixes) - 2, model.config.n_embd)).to(model.transformer.wte.weight.device)
 
     unk_token_emb: torch.Tensor = model.transformer.wte.weight[-1].detach()
     mean_unk_emb = torch.zeros_like(new_embs) + unk_token_emb.mean()
@@ -100,7 +106,7 @@ def init_new_embeddings(model: ProGenForCausalLM, prefixes: List[str]):
     new_embs = torch.cat([model.transformer.wte.weight, new_embs], dim=0)
     logger.debug(f"New embeddings shape: {new_embs.shape}")
     model.transformer.wte.weight = torch.nn.Parameter(new_embs, requires_grad=True)
-    model.config.vocab_size_emb = new_embs.shape[0]
+    model.config.vocab_size = new_embs.shape[0]
 
 
 def get_lr_schedule(
@@ -149,7 +155,7 @@ def train_epoch(
     batch: dict
     for i, batch in enumerate(dataloader):
         batch = {k: v.to(next(model.parameters()).device) for k, v in batch.items()}
-        loss: torch.Tensor = model(batch, labels=batch['input_ids'].long()).loss
+        loss: torch.Tensor = model(batch, labels=batch['label']).loss
         loss = loss / args.accumulation_steps
         loss.backward()
         total_loss = total_loss + loss.item()

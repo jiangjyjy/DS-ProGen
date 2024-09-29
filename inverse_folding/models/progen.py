@@ -16,7 +16,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.configuration_progen import ProGenConfig
-from .util import CoordMLP
+from .util import CoordMLP, CrossAttention
 
 
 logger = logging.get_logger(__name__)
@@ -325,6 +325,7 @@ class ProGenModel(ProGenPreTrainedModel):
         self.embed_dim = config.n_embd
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.rep_emb_encoder = CoordMLP(512, self.embed_dim, self.embed_dim)
+        self.cross_attn = CrossAttention(self.embed_dim, self.embed_dim, config.num_attention_heads)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.h = nn.ModuleList([ProGenBlock(config) for _ in range(config.n_layer)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -464,11 +465,23 @@ class ProGenModel(ProGenPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
             if input_rep is not None and input_rep_mask is not None and input_seq_len is not None:
-                # if inputs_embeds.shape[1] == input_rep_mask.shape[1]:
+                    assert inputs_embeds.shape[1] == input_rep_mask.shape[1]
                     rep_embeds = self.rep_emb_encoder(input_rep)
-                    sliced_rep_embeds = [rep_embeds[i, :input_seq_len[i], :] for i in range(rep_embeds.size(0))]
-                    rep_embeds = torch.cat(sliced_rep_embeds, dim=0)
-                    inputs_embeds[input_rep_mask.bool()] = rep_embeds
+                    sec_struc_embeds = [inputs_embeds[i, :input_seq_len[i], :] for i in range(inputs_embeds.size(0))]
+                    max_sec_len = max([t.shape[0] for t in sec_struc_embeds])
+                    sec_struc_embeds = torch.stack([torch.cat([x, torch.zeros((max_sec_len - x.size(0), x.size(1)), dtype=torch.int32, device=x.device)]) for x in sec_struc_embeds])
+                    cross_mask = torch.ones(batch_size,1,max_sec_len,rep_embeds.size(1)).to(sec_struc_embeds.device)
+                    for i in range(batch_size):
+                        cross_mask[i,:,input_seq_len[i]:,input_seq_len[i]:] = 0
+                    cross_embeds = self.cross_attn(sec_struc_embeds,rep_embeds,cross_mask)
+                    sliced_cross_embeds = [cross_embeds[i, :input_seq_len[i], :] for i in range(cross_embeds.size(0))]
+                    cross_embeds = torch.cat(sliced_cross_embeds, dim=0)
+                    inputs_embeds[input_rep_mask.bool()] = cross_embeds
+
+                    # rep_embeds = self.rep_emb_encoder(input_rep)
+                    # sliced_rep_embeds = [rep_embeds[i, :input_seq_len[i], :] for i in range(rep_embeds.size(0))]
+                    # rep_embeds = torch.cat(sliced_rep_embeds, dim=0)
+                    # inputs_embeds[input_rep_mask.bool()] = rep_embeds
                 
 
 

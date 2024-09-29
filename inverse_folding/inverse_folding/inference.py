@@ -23,6 +23,7 @@ def inference(
     tokenizer: Tokenizer,
     device: torch.device,
     rep: Optional[torch.Tensor],
+    sec_struc: List[str],
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
@@ -34,11 +35,13 @@ def inference(
     model.eval()
 
     seq_len = rep.shape[0] if rep is not None else 0
+    sec_struc = ''.join([f'<{s}>' for s in sec_struc])
     encoding: Encoding = tokenizer.encode('1')
     ids = torch.tensor(encoding.ids)                             # (T,)
     ids = ids[:len(torch.nonzero(ids))]
-    rep_ids =  torch.zeros(seq_len)
-    ids = torch.cat((rep_ids, ids))
+    # rep_ids =  torch.zeros(seq_len)
+    sec_struc =  torch.tensor(tokenizer.encode(sec_struc).ids)
+    ids = torch.cat((sec_struc, ids))
     x = torch.zeros((num_return_sequences, ids.shape[0]))        # (B, T)
     x = x + ids
     x = x.to(device).to(torch.int32)
@@ -46,7 +49,7 @@ def inference(
     past_key_values = None
     generated = x
 
-    rep = rep.unsqueeze(0).expand(num_return_sequences, -1, -1)
+    rep = rep.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device)
     rep_mask = torch.zeros((num_return_sequences, ids.shape[0])) 
     rep_mask[:, :seq_len] = 1
     rep_mask = rep_mask.to(device).to(torch.int32)
@@ -57,7 +60,7 @@ def inference(
                 'input_rep_mask': rep_mask,
                 'seq_len': seq_len,
                 }
-    while generated.shape[-1] < min(seq_len * 2 + 1, max_length):
+    while generated.shape[-1] < min(seq_len[0] * 2 + 1, max_length):
         # using cached attn outputs from previous iterations
         output = model(input_dict, past_key_values=past_key_values)
         past_key_values = output.past_key_values
@@ -141,25 +144,25 @@ def main(args):
     with open(args.test_data, 'rb') as f:
         test_data = pickle.load(f)
 
-    output_dir = os.path.join("data/infernece", args.model.split("/")[-1])
+    output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"inference_k{args.k}_t{args.t}.pkl")
+    test_fname = args.test_data.split("/")[-1]
+    output_file = os.path.join(output_dir, f"inference_{test_fname}")
 
     if args.k == 0 or args.k > model.config.vocab_size:
         args.k = None
 
     logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
-    tokens = tokenizer.encode(args.prompt).tokens
-    logger.info(f"Prompt tokens: {tokens}")
 
-    
-    for i, d in tqdm(enumerate(test_data)):
+    for i, d in tqdm(enumerate(test_data), total=len(test_data)):
         rep = d['rep']
+        sec_struc = d['sec_struc']
         pred_seq = inference(
             model=model,
             tokenizer=tokenizer,
             device=device,
             rep=rep,
+            sec_struc=sec_struc,
             num_return_sequences=args.batch_size,
             temperature=args.t,
             max_length=args.max_length,

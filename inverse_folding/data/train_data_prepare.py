@@ -6,7 +6,8 @@ from data.util import process_line, load_model
 from tqdm import tqdm
 import pickle
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+import warnings
+warnings.filterwarnings("ignore")
 
 model_path = '/home/v-yantingli/mmp/ckpt/coords_encoder'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -17,9 +18,8 @@ cif_list2 = os.listdir(extra_data_path)
 data_list_path = '/home/v-yantingli/mmp/data/data_list/train&valid'
 data_list = sorted(os.listdir(data_list_path))
 valid_set_num = [5] # valid_set_num[i] is between 0-9
-save_path = '/home/v-yantingli/mmp/data/processed_data'
+save_path = '/home/v-yantingli/mmp/data/processed_data_new'
 os.makedirs(save_path,exist_ok=True)
-
 
 # Load data list
 valid_data_list = []

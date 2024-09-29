@@ -14,6 +14,7 @@ import torch
 import esm
 from argparse import Namespace
 from models.coords_encoder import CoordsEncoder
+from Bio import PDB
 
 
 _canonical_aa_list = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS",
@@ -145,13 +146,18 @@ def process_line(line, cif_list2, extra_data_path, raw_data_path):
         start_pos, end_pos = int(start_pos), int(end_pos)
         try:
             structure = load_structure(fpath, chain_id, start_pos, end_pos)
+            sec_structure = get_sec_structure(fpath, chain_id, start_pos, end_pos)
+            if len(sec_structure)*3 != len(structure):
+                continue
             if not structure:
                 continue
             coords, native_seq = extract_coords_from_structure(structure)
+            line_elements.append((start_pos, end_pos))
             temp_dict = {
                 'seq': native_seq,
                 'coords': coords,
                 'info': line_elements,
+                'sec_struc': sec_structure
             }
             temp_list.append(temp_dict)
         except:
@@ -170,3 +176,38 @@ def load_model(path: str, device: str = 'cpu'):
     model.load_state_dict(torch.load(model_weights_path))
     model.eval()
     return model
+
+def get_sec_structure(fpath, chain=None, start_pos=None, end_pos=None):
+    if fpath.endswith('cif'):
+        parser = PDB.MMCIFParser()
+    elif fpath.endswith('pdb'):
+        parser = PDB.PDBParser()
+    structure = parser.get_structure("structure", fpath)
+    dssp = PDB.DSSP(structure[0], fpath)
+    if start_pos is not None or end_pos is not None:
+        start_id, end_id = get_res_id(fpath, chain, start_pos, end_pos)
+        for i, k in enumerate(dssp.keys()):
+            if k[1][1] == start_id and k[0] == chain:
+                i_s = i
+            elif k[1][1] == end_id and k[0] == chain:
+                i_e = i
+        sec_sturc = []
+        for i, res in enumerate(dssp):
+            if i_s <= i <= i_e:
+                sec_sturc.append(res[2])
+    else:
+        sec_sturc = [res[2] for res in dssp]
+    return sec_sturc
+
+def add_cryst1_if_missing(pdb_file):
+    with open(pdb_file, 'r') as file:
+        lines = file.readlines()
+
+    has_cryst1 = any(line.startswith('CRYST1') for line in lines)
+
+    if not has_cryst1:
+        cryst1_line = "CRYST1\n"
+        lines.insert(0, cryst1_line)
+
+        with open(pdb_file, 'w') as file:
+            file.writelines(lines)
