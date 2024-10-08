@@ -26,7 +26,8 @@ class ProGenConfig(PretrainedConfig):
 
     def __init__(
         self,
-        vocab_size=50400,
+        vocab_size=32,
+        vocab_size_lmhead=32,
         n_positions=2048,
         n_ctx=2048,
         n_embd=4096,
@@ -50,6 +51,7 @@ class ProGenConfig(PretrainedConfig):
         super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
 
         self.vocab_size = vocab_size
+        self.vocab_size_lmhead = vocab_size_lmhead
         self.n_ctx = n_ctx
         self.n_positions = n_positions
         self.n_embd = n_embd

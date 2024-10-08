@@ -18,77 +18,11 @@ import logging
 from typing import List, Tuple
 from models.progen import ProGenForCausalLM
 import wandb
+from dataset.dataset import Protein_dataset, Protein_Large_dataset, collate_fn, load_data
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-
-class Protein_dataset(Dataset):
-    def __init__(self, lines, tokenizer: Tokenizer, filter_seq_len: int):
-        self.lines = [line for line in lines if len(line['seq']) < filter_seq_len]
-        self.tokenizer = tokenizer
-
-    def __len__(self):
-        return len(self.lines)
-
-    def __getitem__(self, idx):
-        item = dict()
-        line = self.lines[idx]
-        item['seq_len'] = len(line['seq'])
-        item['input_rep'] = line['rep']
-        seq = line['seq']
-        seq = torch.tensor(self.tokenizer.encode(f'1{seq}2').ids)
-        sec_struc = ''.join([f'<{s}>' for s in line['sec_struc']])
-        sec_struc =  torch.tensor(self.tokenizer.encode(sec_struc).ids)
-        assert len(sec_struc) == len(line['seq'])
-        item['input_ids'] = torch.cat((sec_struc, seq)).to(torch.int32)
-        rep_mask = torch.ones(len(line['seq'])+seq.shape[0])
-        rep_mask[len(line['seq']):] = 0
-        item['input_rep_mask'] = rep_mask.to(torch.int32)
-        label = item['input_ids'].clone()
-        label[:len(line['seq'])] = -100
-        item['label'] = label.long()
-        return item
-
-
-def collate_fn(batch):
-    # Get all input_ids and input_rep_mask from the batch
-    input_ids = [item['input_ids'] for item in batch]
-    input_rep_mask = [item['input_rep_mask'] for item in batch]
-    input_rep = [item['input_rep'].to('cpu') for item in batch]
-    labels = [item['label'] for item in batch]
-    seq_len = torch.tensor([item['seq_len'] for item in batch])
-    
-    # Find the max length for padding
-    max_len = max([x.size(0) for x in input_ids])
-    max_rep_len = max([x.size(0) for x in input_rep])
-    
-    # Pad input_ids, input_rep_mask, and labels to the same length
-    padded_input_ids = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_ids])
-    padded_input_rep_mask = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_rep_mask])
-    padded_labels = torch.stack([torch.cat([x, torch.full((max_len - x.size(0),), -100, dtype=torch.int32)]) for x in labels])
-    padded_input_rep = torch.stack([torch.cat([x, torch.zeros(max_rep_len - x.size(0), x.size(1))]) for x in input_rep])
-    
-    # Return the batch as a dictionary
-    return {
-        'input_ids': padded_input_ids,
-        'input_rep_mask': padded_input_rep_mask,
-        'input_rep': padded_input_rep,
-        'label': padded_labels,
-        'seq_len': seq_len
-    }
-
-
-def load_data(file: str) -> Tuple[List[str], List[str]]:
-    lines = []
-    prefixes = set()
-    with open(file, "rb") as f:
-        lines = pickle.load(f)
-        for line in lines:
-            for s in line['sec_struc']:
-                prefixes.add(f'<{s}>')
-    prefixes = sorted(list(prefixes))
-    return lines, prefixes
 
 
 def init_new_embeddings(model: ProGenForCausalLM, prefixes: List[str]):
@@ -159,6 +93,8 @@ def train_epoch(
         loss = loss / args.accumulation_steps
         loss.backward()
         total_loss = total_loss + loss.item()
+        if (i + 1) % 1000 == 0:  
+            wandb.log({"batch_loss": total_loss / (i + 1)})
         # using gradient accumulation to save memory
         if (i + 1) % args.accumulation_steps == 0:
             optimizer.step()
@@ -256,14 +192,16 @@ def main(args: argparse.Namespace):
     tokenizer = create_tokenizer_custom(file='/home/v-yantingli/mmp/checkpoints/tokenizer.json')
     tokenizer.enable_truncation(max_length=1024)
 
-    train_data, prefixes = load_data(args.train_file)
-    valid_data, prefixes_test = load_data(args.test_file)
+    # train_data, prefixes = load_data(args.train_file, args.sec_struc)
+    valid_data, prefixes_test = load_data(args.test_file, args.sec_struc)
+    prefixes = []
     logger.info(f"Found prefixes: {prefixes}")
-    assert prefixes == prefixes_test, "Prefixes in train and test data must be the same"
+    # assert prefixes == prefixes_test, "Prefixes in train and test data must be the same"
     tokenizer.add_tokens(prefixes)
 
-    train_data = Protein_dataset(train_data, tokenizer, filter_seq_len=512)
-    valid_data = Protein_dataset(valid_data, tokenizer, filter_seq_len=512)
+    train_data = Protein_Large_dataset(args.train_file, tokenizer, sec=args.sec_struc)
+    # train_data = Protein_dataset(train_data, tokenizer, filter_seq_len=512, sec=args.sec_struc)
+    valid_data = Protein_dataset(valid_data, tokenizer, filter_seq_len=512, sec=args.sec_struc)
     logger.debug(f"Train data size: {len(train_data)}")
     logger.debug(f"Test data size: {len(valid_data)}")
 
@@ -346,7 +284,7 @@ if __name__ == "__main__":
         required=True,
         help="Path to test data file. Must contain preprocessed data (includes prefixes and one protein per line, e.g. not fasta format).",
     )
-    parser.add_argument("--seed", type=int, default=69)
+    parser.add_argument("--seed", type=int, default=2024)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument(
         "--accumulation_steps",
@@ -400,6 +338,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_parallel",
+        action="store_true",
+        default=False,
+        help="Train on multi gpu. default: False",
+    )
+    parser.add_argument(
+        "--sec_struc",
         action="store_true",
         default=False,
         help="Train on multi gpu. default: False",

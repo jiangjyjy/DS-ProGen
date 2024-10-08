@@ -23,11 +23,11 @@ def inference(
     tokenizer: Tokenizer,
     device: torch.device,
     rep: Optional[torch.Tensor],
-    sec_struc: List[str],
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
     top_k: Optional[int] = None,
+    sec_struc: Optional[list] = None
 ) -> List[str]:
     """
     Generate samples from the model given a prompt. Using top-k sampling with temperature.
@@ -35,13 +35,16 @@ def inference(
     model.eval()
 
     seq_len = rep.shape[0] if rep is not None else 0
-    sec_struc = ''.join([f'<{s}>' for s in sec_struc])
     encoding: Encoding = tokenizer.encode('1')
     ids = torch.tensor(encoding.ids)                             # (T,)
     ids = ids[:len(torch.nonzero(ids))]
-    # rep_ids =  torch.zeros(seq_len)
-    sec_struc =  torch.tensor(tokenizer.encode(sec_struc).ids)
-    ids = torch.cat((sec_struc, ids))
+    if sec_struc is not None:
+        sec_struc = ''.join([f'<{s}>' for s in sec_struc])
+        sec_struc =  torch.tensor(tokenizer.encode(sec_struc).ids)
+        ids = torch.cat((sec_struc, ids))
+    else:
+        rep_ids =  torch.zeros(seq_len)
+        ids = torch.cat((rep_ids, ids))
     x = torch.zeros((num_return_sequences, ids.shape[0]))        # (B, T)
     x = x + ids
     x = x.to(device).to(torch.int32)
@@ -89,7 +92,7 @@ def truncate(seq: str) -> str:
     """
 
     # remove family token
-    seq = re.sub(r"<\|.*\|>", "", seq)
+    seq = re.sub(r'<.*?>', "", seq)
 
     # remove initial terminus
     terminus = seq[0]
@@ -141,39 +144,41 @@ def main(args):
     logger.debug(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
     logger.debug(f"Tokenizer vocab: {tokenizer.get_vocab()}")
 
-    with open(args.test_data, 'rb') as f:
-        test_data = pickle.load(f)
+    test_data_list = os.listdir(args.test_data_dir)
+    test_data_list = [x for x in test_data_list if x.endswith('.pkl') and x.startswith('test')]
+    for test_data_name in test_data_list:
+        with open(os.path.join(args.test_data_dir,test_data_name), 'rb') as f:
+            test_data = pickle.load(f)
 
-    output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
-    os.makedirs(output_dir, exist_ok=True)
-    test_fname = args.test_data.split("/")[-1]
-    output_file = os.path.join(output_dir, f"inference_{test_fname}")
+        output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, f"inference_{test_data_name}")
 
-    if args.k == 0 or args.k > model.config.vocab_size:
-        args.k = None
+        if args.k == 0 or args.k > model.config.vocab_size:
+            args.k = None
 
-    logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
+        logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
 
-    for i, d in tqdm(enumerate(test_data), total=len(test_data)):
-        rep = d['rep']
-        sec_struc = d['sec_struc']
-        pred_seq = inference(
-            model=model,
-            tokenizer=tokenizer,
-            device=device,
-            rep=rep,
-            sec_struc=sec_struc,
-            num_return_sequences=args.batch_size,
-            temperature=args.t,
-            max_length=args.max_length,
-            top_k=args.k,
-        )
-        for j in range(len(pred_seq)):
-            pred_seq[j] = truncate(pred_seq[j])
-        test_data[i]['pred_seq'] = pred_seq
-    with open(output_file, 'wb') as f:
-        pickle.dump(test_data, f)
-    logger.info(f"saved to file {output_file}")
+        for i, d in tqdm(enumerate(test_data), total=len(test_data)):
+            rep = d['rep']
+            sec_struc = d.get('sec_struc', None)
+            pred_seq = inference(
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                rep=rep,
+                num_return_sequences=args.batch_size,
+                temperature=args.t,
+                max_length=args.max_length,
+                top_k=args.k,
+                sec_struc=sec_struc
+            )
+            for j in range(len(pred_seq)):
+                pred_seq[j] = truncate(pred_seq[j])
+            test_data[i]['pred_seq'] = pred_seq
+        with open(output_file, 'wb') as f:
+            pickle.dump(test_data, f)
+        logger.info(f"saved to file {output_file}")
 
 
 if __name__ == "__main__":
@@ -185,7 +190,7 @@ if __name__ == "__main__":
         help="Hugging Face model name or path to the model directory. If path, should contain tokenizer.json, config.json and pytorch_model.bin.",
     )
     parser.add_argument(
-        "--test_data",
+        "--test_data_dir",
         type=str,
         required=True,
         help="Path to test data file. Must contain preprocessed data.",

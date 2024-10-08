@@ -13,8 +13,12 @@ import json
 import torch
 import esm
 from argparse import Namespace
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.coords_encoder import CoordsEncoder
 from Bio import PDB
+import zlib
+import pickle
 
 
 _canonical_aa_list = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS",
@@ -206,8 +210,38 @@ def add_cryst1_if_missing(pdb_file):
     has_cryst1 = any(line.startswith('CRYST1') for line in lines)
 
     if not has_cryst1:
-        cryst1_line = "CRYST1\n"
-        lines.insert(0, cryst1_line)
+        for i, line in enumerate(lines):
+            if line.startswith(('ATOM', 'HETATM')):
+                cryst1_line = "CRYST1\n"
+                lines.insert(i, cryst1_line)
+                break
 
         with open(pdb_file, 'w') as file:
             file.writelines(lines)
+
+
+def process_afdb(pdb,raw_data_path,cut_off=500):
+    fpath = os.path.join(raw_data_path, pdb)
+    try:
+        structure = load_structure(fpath)
+        all_chains = get_chains(structure)
+        if len(all_chains) > 1:
+            return None
+        if len(structure)>=3*cut_off:
+            return None
+        add_cryst1_if_missing(fpath)
+        sec_structure = get_sec_structure(fpath)
+        if len(sec_structure)*3 != len(structure):
+            return None
+        coords, native_seq = extract_coords_from_structure(structure)
+        temp_dict = {
+            'seq': native_seq,
+            'coords': coords,
+            'sec_struc': ''.join(sec_structure)
+        }
+        return temp_dict
+    except:
+        return None
+    
+def obj2bstr(obj):
+    return zlib.compress(pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL))
