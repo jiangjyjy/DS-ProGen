@@ -15,7 +15,7 @@ import esm
 from argparse import Namespace
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models.coords_encoder import CoordsEncoder
+from modules.coords_encoder import CoordsEncoder
 from Bio import PDB
 import zlib
 import pickle

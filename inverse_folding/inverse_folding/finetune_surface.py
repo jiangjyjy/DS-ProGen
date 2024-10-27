@@ -16,16 +16,16 @@ from transformers import (
 from tqdm import tqdm
 import logging
 from typing import List, Tuple
-from models.coord_progen import ProGenForCausalLM
+from models.surf_progen import ProGenSurfForCausalLM
+from dataset.surface_dataset import Surface_dataset, collate_fn
 import wandb
-from dataset.coords_dataset import Protein_dataset, Protein_Large_dataset, collate_fn, load_data
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def init_new_embeddings(model: ProGenForCausalLM, prefixes: List[str]):
+def init_new_embeddings(model: ProGenSurfForCausalLM, prefixes: List[str]):
     if len(prefixes) <= 2:
         logger.info("No new embeddings to initialize.")
         return
@@ -75,8 +75,8 @@ def get_lr_schedule(
 
 
 def train_epoch(
-    model: ProGenForCausalLM,
-    dataset: Protein_dataset,
+    model: ProGenSurfForCausalLM,
+    dataset: Surface_dataset,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LambdaLR,
     epoch: int,
@@ -109,8 +109,8 @@ def train_epoch(
 
 @torch.no_grad()
 def evaluate(
-    model: ProGenForCausalLM,
-    dataset: Protein_dataset,
+    model: ProGenSurfForCausalLM,
+    dataset: Surface_dataset,
     args: argparse.Namespace,
     before_train: bool = False,
 ):
@@ -135,10 +135,10 @@ def evaluate(
 
 
 def train(
-    model: ProGenForCausalLM,
+    model: ProGenSurfForCausalLM,
     tokenizer: Tokenizer,
-    train_dataset: Protein_dataset,
-    valid_dataset: Protein_dataset,
+    train_dataset: Surface_dataset,
+    valid_dataset: Surface_dataset,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LambdaLR,
     args: argparse.Namespace,
@@ -191,17 +191,13 @@ def main(args: argparse.Namespace):
             return Tokenizer.from_str(f.read())
     tokenizer = create_tokenizer_custom(file='/home/v-yantingli/mmp/checkpoints/tokenizer.json')
     tokenizer.enable_truncation(max_length=1024)
-
-    train_data, prefixes = load_data(args.train_file, args.sec_struc)
-    valid_data, prefixes_test = load_data(args.test_file, args.sec_struc)
     prefixes = []
     logger.info(f"Found prefixes: {prefixes}")
     # assert prefixes == prefixes_test, "Prefixes in train and test data must be the same"
     tokenizer.add_tokens(prefixes)
 
-    # train_data = Protein_Large_dataset(args.train_file, tokenizer, sec=args.sec_struc)
-    train_data = Protein_dataset(train_data, tokenizer, filter_seq_len=512, sec=args.sec_struc)
-    valid_data = Protein_dataset(valid_data, tokenizer, filter_seq_len=512, sec=args.sec_struc)
+    train_data = Surface_dataset(args.train_file, tokenizer, filter_seq_len=512)
+    valid_data = Surface_dataset(args.test_file, tokenizer, filter_seq_len=512)
     logger.info(f"Train data size: {len(train_data)}")
     logger.info(f"Test data size: {len(valid_data)}")
 
@@ -217,12 +213,19 @@ def main(args: argparse.Namespace):
     # loading model
     logger.info(f"Loading model: {args.model}...")
     if not args.model_parallel:
-        model = ProGenForCausalLM.from_pretrained(args.model).to(device)
+        model = ProGenSurfForCausalLM.from_pretrained(args.model).to(device)
     else:
-        model = ProGenForCausalLM.from_pretrained(args.model).parallelize()
+        model = ProGenSurfForCausalLM.from_pretrained(args.model).parallelize()
     logger.info(f"Model loaded. Parameter count: {model.num_parameters() // 1e6} M")
     init_new_embeddings(model, prefixes)
 
+    # freeze layers
+    for name, param in model.named_parameters():
+        if name.startswith("transformer.h.") and any(
+            name.startswith(f"transformer.h.{i}") for i in range(2,10)
+        ):
+            param.requires_grad = False
+    
     # creating optimizer and scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     training_steps = (

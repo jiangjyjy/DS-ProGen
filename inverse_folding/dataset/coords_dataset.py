@@ -52,7 +52,7 @@ class Protein_Large_dataset(Dataset):
             with txn.cursor() as curs:  
                 datapoint_pickled = curs.get('__metadata__'.encode())
                 keys = pickle.loads(zlib.decompress(datapoint_pickled))['keys']
-        self.keys = keys
+        self.keys = keys[:4000000]
         self.rep_model = load_model('/home/v-yantingli/mmp/ckpt/coords_encoder','cuda')
 
     def __len__(self):

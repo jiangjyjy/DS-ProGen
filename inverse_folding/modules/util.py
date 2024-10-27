@@ -88,3 +88,22 @@ class CrossAttention(nn.Module):
         output = self.linear_output(attention)
 
         return output
+    
+
+class CNNFixedSizeOutput(nn.Module):
+    def __init__(self, input_dim=256, output_len=20, output_dim=1024, num_filters=512, kernel_size=3):
+        super(CNNFixedSizeOutput, self).__init__()
+        self.conv1d = nn.Conv1d(in_channels=input_dim, 
+                                out_channels=num_filters, 
+                                kernel_size=kernel_size, 
+                                padding=kernel_size // 2)
+        self.adaptive_pool = nn.AdaptiveAvgPool1d(output_len)
+        self.fc = nn.Linear(num_filters, output_dim)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = torch.relu(self.conv1d(x))
+        x = self.adaptive_pool(x)
+        x = x.permute(0, 2, 1)
+        x = self.fc(x)
+        return x

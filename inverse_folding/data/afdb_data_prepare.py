@@ -18,6 +18,15 @@ cif_list = os.listdir(raw_data_path)
 save_path = '/home/v-yantingli/mmp/data/afdb_data/afdb.lmdb'
 env = lmdb.open(save_path, map_size=8*1024**4)
 
+with open('/home/v-yantingli/mmp/data/processed_data_new/test_hme.pkl', 'rb') as f:
+    test_data = pickle.load(f)
+test_seq = [d['seq'] for d in test_data]
+del test_data
+with open('/home/v-yantingli/mmp/seq_list.pkl', 'rb') as f:
+    exist_seq = pickle.load(f)
+exist_seq = exist_seq + test_seq
+exist_seq = set(exist_seq)
+
 # Use multiprocess
 def process_data(lines: list[str], raw_data_path: str, use: str):
     processed_data = []
@@ -41,20 +50,26 @@ for i in range(0, len(cif_list), batch_size):
                 keys = pickle.loads(zlib.decompress(datapoint_pickled))['keys']
             else:
                 keys = []
+                print('no keys')
     with env.begin(write=True) as txn:
         for idx, data_dict in enumerate(tqdm(train_data, desc='Saving data')):
-            key = f'{i//batch_size}_{idx}'
-            keys.append(key)
-            key = key.encode() 
-            value = obj2bstr(data_dict)
-            txn.put(key, value)
-
-    with env.begin(write=True) as txn:
+            if data_dict['seq'] not in exist_seq:
+                exist_seq.add(data_dict['seq'])
+                key = f'e{i//batch_size}_{idx}'
+                keys.append(key)
+                key = key.encode() 
+                value = obj2bstr(data_dict)
+                txn.put(key, value)
         txn.put('__metadata__'.encode(), obj2bstr({'keys':keys}))
 
     print(f'Training data saved for batch {i//batch_size}')
     del train_data
-    # for file in tqdm(batch):
-    #     os.remove(os.path.join(raw_data_path, file))
+    for file in tqdm(batch):
+        os.remove(os.path.join(raw_data_path, file))
     gc.collect()
+
+with open('/home/v-yantingli/mmp/seq_list.pkl', 'wb') as f:
+    pickle.dump(list(exist_seq), f)
+
+
     

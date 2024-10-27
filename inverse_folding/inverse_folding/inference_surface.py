@@ -8,7 +8,7 @@ from tqdm import tqdm
 import re
 from typing import Optional, Union
 from tokenizers import Tokenizer, Encoding
-from models.coord_progen import ProGenForCausalLM
+from models.surf_progen import ProGenSurfForCausalLM
 from typing import List
 from data.util import load_model
 import pickle
@@ -20,10 +20,11 @@ logger = logging.getLogger(__name__)
 
 @torch.no_grad()
 def inference(
-    model: ProGenForCausalLM,
+    model: ProGenSurfForCausalLM,
     tokenizer: Tokenizer,
     device: torch.device,
-    rep: Optional[torch.Tensor],
+    aa: Optional[torch.Tensor],
+    coord: Optional[torch.Tensor],
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
@@ -35,17 +36,12 @@ def inference(
     """
     model.eval()
 
-    seq_len = rep.shape[0] if rep is not None else 0
+    seq_len = 500
     encoding: Encoding = tokenizer.encode('1')
     ids = torch.tensor(encoding.ids)                             # (T,)
     ids = ids[:len(torch.nonzero(ids))]
-    if sec_struc is not None:
-        sec_struc = ''.join([f'<{s}>' for s in sec_struc])
-        sec_struc =  torch.tensor(tokenizer.encode(sec_struc).ids)
-        ids = torch.cat((sec_struc, ids))
-    else:
-        rep_ids =  torch.zeros(seq_len)
-        ids = torch.cat((rep_ids, ids))
+    rep_ids =  torch.zeros(20)
+    ids = torch.cat((rep_ids, ids))
     x = torch.zeros((num_return_sequences, ids.shape[0]))        # (B, T)
     x = x + ids
     x = x.to(device).to(torch.int32)
@@ -53,20 +49,20 @@ def inference(
     past_key_values = None
     generated = x
 
-    rep = rep.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device)
     rep_mask = torch.zeros((num_return_sequences, ids.shape[0])) 
-    rep_mask[:, :seq_len] = 1
+    rep_mask[:, :20] = 1
     rep_mask = rep_mask.to(device).to(torch.int32)
     seq_len = torch.full((num_return_sequences,), seq_len).to(device).to(torch.int32)
 
     input_dict = {'input_ids': x,
-                'input_rep': rep,
+                'input_aa': aa.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device),
+                'input_coord': coord.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device),
                 'input_rep_mask': rep_mask,
                 'seq_len': seq_len,
                 }
-    while generated.shape[-1] < min(seq_len[0] * 2 + 1, max_length):
+    while generated.shape[-1] < min(seq_len[0] + 22, max_length):
         # using cached attn outputs from previous iterations
-        output = model(input_dict, past_key_values=past_key_values)
+        output = model(input_batch=input_dict, past_key_values=past_key_values)
         past_key_values = output.past_key_values
         logits = output.logits                                       # (B, T, V)
         # get logits only for the last token
@@ -114,6 +110,46 @@ def truncate(seq: str) -> str:
     else:
         return seq[::-1]
 
+
+def read_aa_dict():
+        alphabet = 'ACDEFGHIKLMNPQRSTVWY'
+        aa2index = dict()
+        for aa in alphabet:
+            aa2index[aa] = len(aa2index)
+        return aa2index
+
+def read_aa_data(path):
+    amino_acid_dict = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C", "GLN": "Q", "GLU": "E",
+                "GLY": "G", "HIS": "H", "ILE": "I", "LEU": "L", "LYS": "K", "MET": "M", "PHE": "F",
+                "PRO": "P", "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V"}
+    aa2index = read_aa_dict()
+    tokens_list = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f.readlines():
+            words = line.strip().split()
+            aas = [amino_acid_dict[word.strip().split("_")[-2].strip()] for word in words]
+            tokens = []
+            for word in aas:
+                tokens.append(aa2index[word])
+            tokens_list.append(torch.IntTensor(tokens))
+
+    return tokens_list
+
+
+def read_coor_data(path):
+    tokens_list = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f.readlines():
+            words = line.strip().split()
+            tokens = []
+            for i in range(0, len(words), 3):
+                coor = [float(words[i].strip()), float(words[i+1].strip()), float(words[i+2].strip())]
+                tokens.extend(coor)   # [L * 3]
+
+            tokens_list.append(torch.tensor(tokens))
+    return tokens_list
+
+
 def main(args):
     os.environ["PYTHONHASHSEED"] = str(args.seed)
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -131,7 +167,7 @@ def main(args):
         logger.warning(f"You are using CPU for inference with a relatively high batch size of {args.batch_size}, therefore inference might be slow. Consider using a GPU or smaller batch.")
 
     logger.info(f"Loading model from {args.model}")
-    model = ProGenForCausalLM.from_pretrained(args.model).to(device)
+    model = ProGenSurfForCausalLM.from_pretrained(args.model).to(device)
     logger.debug("Model loaded.")
 
     logger.info("Loading tokenizer")
@@ -145,79 +181,42 @@ def main(args):
     logger.debug(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
     logger.debug(f"Tokenizer vocab: {tokenizer.get_vocab()}")
 
-    test_data_list = os.listdir(args.test_data_dir)
-    test_data_list = [x for x in test_data_list if x.endswith('.pkl') and x.startswith('test')]
-    for test_data_name in test_data_list:
-        with open(os.path.join(args.test_data_dir,test_data_name), 'rb') as f:
-            test_data = pickle.load(f)
+    aa_list = read_aa_data(os.path.join(args.test_data_dir, 'atom.txt'))
+    coord_list = read_coor_data(os.path.join(args.test_data_dir, 'coor.txt'))
 
-        output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f"inference_{test_data_name}")
+    output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"inference_surface")
 
-        if args.k == 0 or args.k > model.config.vocab_size:
-            args.k = None
+    if args.k == 0 or args.k > model.config.vocab_size:
+        args.k = None
 
-        logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
+    logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
 
-        for i, d in tqdm(enumerate(test_data), total=len(test_data)):
-            rep = d['rep']
-            # sec_struc = d.get('sec_struc', None)
-            sec_struc = None
-            if rep.shape[0] > 500:
-                small_size = rep.shape[0]
-                piece = 1
-                while small_size > 500:
-                    piece += 1
-                    small_size = math.ceil(rep.shape[0] / piece)
-                split_size = [small_size]*(piece-1)+[rep.shape[0]-small_size*(piece-1)]
-                splits = torch.split(rep, split_size, dim=0)
-                pred_seq = [''] * args.batch_size
-                atempt = 1
-                while len(max(pred_seq, key=len))<len(d['seq']):
-                    for split_rep in splits:
-                        small_pred_seq = inference(
-                            model=model,
-                            tokenizer=tokenizer,
-                            device=device,
-                            rep=split_rep,
-                            num_return_sequences=args.batch_size,
-                            temperature=args.t,
-                            max_length=args.max_length,
-                            top_k=args.k,
-                            sec_struc=sec_struc
-                        )
-                        for j in range(len(small_pred_seq)):
-                            pred_seq[j] += truncate(small_pred_seq[j])
-                    atempt += 1
-                    if atempt > 10:
-                        break
+    pred_seq_list = []
+    for i, d in tqdm(enumerate(zip(aa_list, coord_list)), total=len(aa_list)):
+        aa, coord = d
+        # sec_struc = d.get('sec_struc', None)
+        sec_struc = None
 
-
-            else:
-                pred_seq = [''] * args.batch_size
-                atempt = 1
-                while len(pred_seq[0])<len(d['seq']):
-                    pred_seq = inference(
-                        model=model,
-                        tokenizer=tokenizer,
-                        device=device,
-                        rep=rep,
-                        num_return_sequences=args.batch_size,
-                        temperature=args.t,
-                        max_length=args.max_length,
-                        top_k=args.k,
-                        sec_struc=sec_struc
-                    )
-                    for j in range(len(pred_seq)):
-                        pred_seq[j] = truncate(pred_seq[j])
-                    atempt += 1
-                    if atempt > 10:
-                        break
-            test_data[i]['pred_seq'] = pred_seq
-        with open(output_file, 'wb') as f:
-            pickle.dump(test_data, f)
-        logger.info(f"saved to file {output_file}")
+        pred_seq = inference(
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            aa=aa,
+            coord=coord,
+            num_return_sequences=args.batch_size,
+            temperature=args.t,
+            max_length=args.max_length,
+            top_k=args.k,
+            sec_struc=sec_struc
+        )
+        for j in range(len(pred_seq)):
+            pred_seq[j] = truncate(pred_seq[j])
+        pred_seq_list.append(pred_seq)
+    with open(output_file, 'wb') as f:
+        pickle.dump(pred_seq_list, f)
+    logger.info(f"saved to file {output_file}")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from tqdm import tqdm
 import re
 from typing import Optional, Union
 from tokenizers import Tokenizer, Encoding
-from models.progen import ProGenForCausalLM
+from inverse_folding.models.coord_progen import ProGenForCausalLM
 from typing import List
 from data.util import load_model
 import pickle
