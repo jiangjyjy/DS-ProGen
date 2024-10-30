@@ -11,10 +11,8 @@ warnings.filterwarnings("ignore")
 
 model_path = '/home/v-yantingli/mmp/ckpt/coords_encoder'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-raw_data_path = '/home/v-yantingli/pdb_mmcif/mmcif_files'
-extra_data_path = '/home/v-yantingli/mmp/data/extra_data'
-cif_list = os.listdir(raw_data_path)
-cif_list2 = os.listdir(extra_data_path)
+data_path = '/home/v-yantingli/pdb_mmcif/mmcif_files'
+cif_list = os.listdir(data_path)
 data_list_path = '/home/v-yantingli/mmp/data/data_list/train&valid'
 data_list = sorted(os.listdir(data_list_path))
 valid_set_num = [5] # valid_set_num[i] is between 0-9
@@ -45,11 +43,10 @@ for file_name in valid_data_list:
 print(f'valid data length: {len(valid_lines)}')
 
 # Check if all raw data is download
-cif_list_check = cif_list + cif_list2
 unseen = []
 for line in train_lines+valid_lines:
     expected_cif = f"{line.split(' ')[0][:4]}.cif"
-    if expected_cif not in cif_list_check:
+    if expected_cif not in cif_list:
         unseen.append(line.split(' ')[0][:4])
 assert not unseen, f'There are several file you have not downloaded: {unseen}'
 
@@ -58,10 +55,10 @@ model = load_model(model_path, device=device)
 print(f'model loaded on {device}')
 
 # Use multiprocess
-def process_data(lines: list[str], cif_list2: str, extra_data_path: str, raw_data_path: str, use: str):
+def process_data(lines: list[str], data_path: str, use: str):
     processed_data, unprocessed_data = [], []
     with ProcessPoolExecutor(max_workers=None) as executor:  # when max_workers=None will do os.cpu_count()
-        futures = [executor.submit(process_line, line, cif_list2, extra_data_path, raw_data_path) for line in lines]
+        futures = [executor.submit(process_line, line, data_path) for line in lines]
         for future in tqdm(as_completed(futures), total=len(futures), desc=f"Processing {use} Data"):
             temp_list, unprocessed = future.result()
             if temp_list:
@@ -70,8 +67,8 @@ def process_data(lines: list[str], cif_list2: str, extra_data_path: str, raw_dat
                 unprocessed_data.extend(unprocessed)
     return processed_data, unprocessed_data
 
-train_data, unprocessed_train = process_data(train_lines, cif_list2, extra_data_path, raw_data_path, 'Training')
-valid_data, unprocessed_valid = process_data(valid_lines, cif_list2, extra_data_path, raw_data_path, 'Validation')
+train_data, unprocessed_train = process_data(train_lines, data_path, 'Training')
+valid_data, unprocessed_valid = process_data(valid_lines, data_path, 'Validation')
 
 # Add the coords rep into dict
 def get_rep(data: list[dict]):

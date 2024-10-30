@@ -88,22 +88,38 @@ class CrossAttention(nn.Module):
         output = self.linear_output(attention)
 
         return output
-    
 
-class CNNFixedSizeOutput(nn.Module):
-    def __init__(self, input_dim=256, output_len=20, output_dim=1024, num_filters=512, kernel_size=3):
-        super(CNNFixedSizeOutput, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=input_dim, 
-                                out_channels=num_filters, 
-                                kernel_size=kernel_size, 
-                                padding=kernel_size // 2)
-        self.adaptive_pool = nn.AdaptiveAvgPool1d(output_len)
-        self.fc = nn.Linear(num_filters, output_dim)
 
-    def forward(self, x):
-        x = x.permute(0, 2, 1)
-        x = torch.relu(self.conv1d(x))
-        x = self.adaptive_pool(x)
-        x = x.permute(0, 2, 1)
-        x = self.fc(x)
-        return x
+class ReducePoolings(nn.Module):
+    def __init__(self, reduction, in_features, out_features):
+        super(ReducePoolings, self).__init__()
+        self.reduction = reduction
+        self.layer = nn.Linear(in_features, out_features)
+
+    def forward(self, input_rep, aa_res_ids, input_aa_len, input_seq_len):
+        # input_rep: [batch_size, input_aa_len, feature_dim]
+        batch_size, _, feature_dim = input_rep.shape
+        
+        # init output tensor
+        output = torch.zeros((batch_size, max(input_seq_len), feature_dim), device=input_rep.device)
+        
+        for b in range(batch_size):
+            filled_mask = torch.zeros(input_seq_len[b], dtype=torch.bool, device=input_rep.device)
+            batch_input_rep = input_rep[b, :input_aa_len[b], :]
+            
+            for i in range(input_seq_len[b]):
+                mask = (aa_res_ids[b, :input_aa_len[b]] == i)
+                if mask.sum() > 0:
+                    if self.reduction == "max":
+                        output[b, i, :], _ = batch_input_rep[mask].max(dim=0)
+                    elif self.reduction == "mean":
+                        output[b, i, :] = batch_input_rep[mask].mean(dim=0)
+                    else:
+                        raise ValueError("Unsupported reduction method: {}".format(self.reduction))
+                    filled_mask[i] = True 
+
+            # fill the rest of the sequence with the average value
+            avg_value =output[b, :input_seq_len[b], :][filled_mask].mean(dim=0) if filled_mask.sum() > 0 else torch.zeros(feature_dim, device=input_rep.device)
+            output[b, :input_seq_len[b], :][~filled_mask] = avg_value
+
+        return self.layer(output)

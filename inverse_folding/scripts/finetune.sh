@@ -12,6 +12,6 @@ python3 inverse_folding/inverse_folding/finetune.py \
     --eval_steps=1 \
     --checkpoint_steps=1 \
     --eval_before_train \
-    --save_path=/home/v-yantingli/mmp/ckpt/progen2-small-p4m-finetuned2 \
+    --save_path=/home/v-yantingli/mmp/ckpt/progen2-small-p4m-finetuned1029 \
     # --sec_struc \
     # --model_parallel \

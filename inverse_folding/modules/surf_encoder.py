@@ -311,8 +311,8 @@ def get_edges_batch(n_nodes, batch_size, coords, k=30):
     for i in range(batch_size):
         # k = min(k, len(coords[i]))
         nbrs = NearestNeighbors(n_neighbors=k+1, algorithm='ball_tree').fit(coords[i])
-        distances, indices = nbrs.kneighbors(coords[i])  # [N, 30]
-        edges = get_edges(n_nodes, k, indices)  # [[N*N], [N*N]]
+        distances, indices = nbrs.kneighbors(coords[i])  # [[N*N], [N*N]]
+        edges = get_edges(n_nodes, k, indices)  # [N, 30]
         edges = [torch.LongTensor(edges[0]), torch.LongTensor(edges[1])]
         rows.append(edges[0] + n_nodes * i)  # every sample in batch has its own graph
         cols.append(edges[1] + n_nodes * i)

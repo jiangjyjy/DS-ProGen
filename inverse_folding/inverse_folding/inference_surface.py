@@ -25,6 +25,8 @@ def inference(
     device: torch.device,
     aa: Optional[torch.Tensor],
     coord: Optional[torch.Tensor],
+    seq_len,
+    aa_res_id,
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
@@ -36,11 +38,10 @@ def inference(
     """
     model.eval()
 
-    seq_len = 500
     encoding: Encoding = tokenizer.encode('1')
     ids = torch.tensor(encoding.ids)                             # (T,)
     ids = ids[:len(torch.nonzero(ids))]
-    rep_ids =  torch.zeros(20)
+    rep_ids =  torch.zeros(seq_len)
     ids = torch.cat((rep_ids, ids))
     x = torch.zeros((num_return_sequences, ids.shape[0]))        # (B, T)
     x = x + ids
@@ -50,7 +51,7 @@ def inference(
     generated = x
 
     rep_mask = torch.zeros((num_return_sequences, ids.shape[0])) 
-    rep_mask[:, :20] = 1
+    rep_mask[:, :seq_len] = 1
     rep_mask = rep_mask.to(device).to(torch.int32)
     seq_len = torch.full((num_return_sequences,), seq_len).to(device).to(torch.int32)
 
@@ -59,6 +60,8 @@ def inference(
                 'input_coord': coord.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device),
                 'input_rep_mask': rep_mask,
                 'seq_len': seq_len,
+                'aa_len': torch.full((num_return_sequences,), len(aa)).to(device).to(torch.int32),
+                'aa_res_ids': aa_res_id.unsqueeze(0).expand(num_return_sequences, -1).to(device),
                 }
     while generated.shape[-1] < min(seq_len[0] + 22, max_length):
         # using cached attn outputs from previous iterations
@@ -124,16 +127,19 @@ def read_aa_data(path):
                 "PRO": "P", "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V"}
     aa2index = read_aa_dict()
     tokens_list = []
+    id_list = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f.readlines():
             words = line.strip().split()
-            aas = [amino_acid_dict[word.strip().split("_")[-2].strip()] for word in words]
+            aas = [amino_acid_dict[word.strip().split("_")[-3].strip()] for word in words]
             tokens = []
             for word in aas:
                 tokens.append(aa2index[word])
             tokens_list.append(torch.IntTensor(tokens))
+            aa_id = [int(word.strip().split("_")[-2].strip()) for word in words]
+            id_list.append(torch.IntTensor(aa_id))
 
-    return tokens_list
+    return tokens_list, id_list
 
 
 def read_coor_data(path):
@@ -149,6 +155,19 @@ def read_coor_data(path):
             tokens_list.append(torch.tensor(tokens))
     return tokens_list
 
+def read_seq_len(path):
+        tokens_list = []
+        with open(path, "r", encoding="utf-8") as f:
+            tokens_list = f.readlines()
+        tokens_list = [len(x.strip()) for x in tokens_list]         
+        return tokens_list
+
+def read_first_id(path):
+        tokens_list = []
+        with open(path, "r", encoding="utf-8") as f:
+            tokens_list = f.readlines()
+        tokens_list = [int(x.strip().split('_')[-1]) for x in tokens_list]         
+        return tokens_list
 
 def main(args):
     os.environ["PYTHONHASHSEED"] = str(args.seed)
@@ -181,12 +200,16 @@ def main(args):
     logger.debug(f"Tokenizer vocab size: {tokenizer.get_vocab_size()}")
     logger.debug(f"Tokenizer vocab: {tokenizer.get_vocab()}")
 
-    aa_list = read_aa_data(os.path.join(args.test_data_dir, 'atom.txt'))
+    aa_list, aa_id_list = read_aa_data(os.path.join(args.test_data_dir, 'atom.txt'))
     coord_list = read_coor_data(os.path.join(args.test_data_dir, 'coor.txt'))
+    seq_len_list = read_seq_len(os.path.join(args.test_data_dir, 'seq.txt'))
+    first_id_list = read_first_id(os.path.join(args.test_data_dir, 'pdb.txt'))
+    for i in range(len(aa_id_list)):
+        aa_id_list[i] -= first_id_list[i]
 
     output_dir = os.path.join("inference", args.model.split("/")[-2], args.model.split("/")[-1])
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"inference_surface")
+    output_file = os.path.join(output_dir, f"inference_surface.pkl")
 
     if args.k == 0 or args.k > model.config.vocab_size:
         args.k = None
@@ -194,8 +217,8 @@ def main(args):
     logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
 
     pred_seq_list = []
-    for i, d in tqdm(enumerate(zip(aa_list, coord_list)), total=len(aa_list)):
-        aa, coord = d
+    for i, d in tqdm(enumerate(zip(aa_list, aa_id_list, coord_list, seq_len_list)), total=len(aa_list)):
+        aa, aa_res_id, coord, seq_len = d
         # sec_struc = d.get('sec_struc', None)
         sec_struc = None
 
@@ -205,6 +228,8 @@ def main(args):
             device=device,
             aa=aa,
             coord=coord,
+            seq_len=seq_len,
+            aa_res_id=aa_res_id,
             num_return_sequences=args.batch_size,
             temperature=args.t,
             max_length=args.max_length,

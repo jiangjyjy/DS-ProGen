@@ -9,9 +9,15 @@ class Surface_dataset(Dataset):
         self.data_path = data_path
         self.tokenizer = tokenizer
         seqs = self.read_seq_data(os.path.join(self.data_path, 'seq.txt'))
-        aas = self.read_aa_data(os.path.join(self.data_path, 'atom.txt'))
+        aas, aa_ids = self.read_aa_data(os.path.join(self.data_path, 'atom.txt'))
         coords = self.read_coor_data(os.path.join(self.data_path, 'coor.txt'))
-        self.lines = [(x, y, z) for x, y, z in zip(seqs, aas, coords) if len(x) <= filter_seq_len]
+        first_ids = self.read_first_id(os.path.join(self.data_path, 'pdb.txt'))
+        assert len(seqs) == len(aas) == len(aa_ids) == len(coords) == len(first_ids), f"len(seqs) {len(seqs)}, len(aas) {len(aas)}, len(coords) {len(coords)}, len(first_ids) {len(first_ids)}"
+        for i in range(len(seqs)):
+            assert aa_ids[i][0] >= first_ids[i], f"aa_ids[i][0] {aa_ids[i][0]} should be greater than or equal to first_ids[i] {first_ids[i]}"
+            assert aa_ids[i][-1] < first_ids[i] + len(seqs[i]), f"aa_ids[i][-1] {aa_ids[i][-1]} should be less than first_ids[i] {first_ids[i]} + len(seqs[i]) {len(seqs[i])}"
+            aa_ids[i] -= first_ids[i]
+        self.lines = [(x, y, z, r) for x, y, z, r in zip(seqs, aas, coords, aa_ids) if len(x) <= filter_seq_len]
 
     def __len__(self):
         return len(self.lines)
@@ -30,16 +36,19 @@ class Surface_dataset(Dataset):
                    "PRO": "P", "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V"}
         aa2index = self.read_aa_dict()
         tokens_list = []
+        id_list = []
         with open(path, "r", encoding="utf-8") as f:
             for line in f.readlines():
                 words = line.strip().split()
-                aas = [amino_acid_dict[word.strip().split("_")[-2].strip()] for word in words]
+                aas = [amino_acid_dict[word.strip().split("_")[-3].strip()] for word in words]
                 tokens = []
                 for word in aas:
                     tokens.append(aa2index[word])
                 tokens_list.append(torch.IntTensor(tokens))
+                aa_id = [int(word.strip().split("_")[-2].strip()) for word in words]
+                id_list.append(torch.IntTensor(aa_id))
 
-        return tokens_list
+        return tokens_list, id_list
     
     def read_coor_data(self, path):
         tokens_list = []
@@ -60,22 +69,32 @@ class Surface_dataset(Dataset):
             tokens_list = f.readlines()
         tokens_list = [x.strip() for x in tokens_list]         
         return tokens_list
+
+    def read_first_id(self, path):
+        tokens_list = []
+        with open(path, "r", encoding="utf-8") as f:
+            tokens_list = f.readlines()
+        tokens_list = [int(x.strip().split('_')[-1]) for x in tokens_list]         
+        return tokens_list
+
     
     def __getitem__(self, idx):
         item = dict()
-        seq, aa, coord = self.lines[idx]
+        seq, aa, coord, aa_ids = self.lines[idx]
+        assert 3 * len(aa) == len(coord), f"len(aa) {len(aa)} should be equal to len(coord) {len(coord)}"
+        item['aa_len'] = len(aa)
         item['seq_len'] = len(seq)
         item['input_aa'] = aa
         item['input_coord'] = coord
+        item['aa_res_ids'] = aa_ids
         seq_id = torch.tensor(self.tokenizer.encode(f'1{seq}2').ids)
-        item['sec_struc'] = False
-        rep_x =  torch.zeros(20)
+        rep_x =  torch.zeros(len(seq))
         item['input_ids'] = torch.cat((rep_x, seq_id)).to(torch.int32)
-        rep_mask = torch.ones(20+seq_id.shape[0])
-        rep_mask[20:] = 0
+        rep_mask = torch.ones(len(seq)+seq_id.shape[0])
+        rep_mask[len(seq):] = 0
         item['input_rep_mask'] = rep_mask.to(torch.int32)
         label = item['input_ids'].clone()
-        label[:20] = -100
+        label[:len(seq)] = -100
         item['label'] = label.long()
         return item
 
@@ -104,8 +123,9 @@ def collate_fn(batch):
     input_aa = [item['input_aa'] for item in batch]
     input_coord = [item['input_coord'] for item in batch]
     labels = [item['label'] for item in batch]
+    aa_ids  = [item['aa_res_ids'] for item in batch]
     seq_len = torch.tensor([item['seq_len'] for item in batch])
-    sec_struc = torch.tensor(any([item['sec_struc'] for item in batch]))
+    aa_len = torch.tensor([item['aa_len'] for item in batch])
     
     # Find the max length for padding
     max_len = max([x.size(0) for x in input_ids])
@@ -114,6 +134,7 @@ def collate_fn(batch):
     padded_input_ids = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_ids])
     padded_input_rep_mask = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_rep_mask])
     padded_labels = torch.stack([torch.cat([x, torch.full((max_len - x.size(0),), -100, dtype=torch.int32)]) for x in labels])
+    padded_aa_ids = collate_features(aa_ids)
     padded_inout_aa = collate_features(input_aa)
     padded_input_coord = collate_features(input_coord)
     
@@ -125,6 +146,8 @@ def collate_fn(batch):
         'input_coord': padded_input_coord,
         'label': padded_labels,
         'seq_len': seq_len,
-        'sec_struc': sec_struc
+        'aa_len': aa_len,
+        'aa_res_ids': padded_aa_ids
+
     }
 

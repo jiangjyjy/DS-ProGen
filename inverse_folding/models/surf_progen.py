@@ -12,7 +12,7 @@ from transformers.utils.model_parallel_utils import assert_device_map, get_devic
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from modules.util import CNNFixedSizeOutput
+from modules.util import ReducePoolings
 from modules.progen import ProGenPreTrainedModel, ProGenBlock
 from modules.surf_encoder import SurfaceEncoder
 import argparse
@@ -26,7 +26,7 @@ class ProGenSurfModel(ProGenPreTrainedModel):
         self.vocab_size_emb = config.vocab_size
         self.embed_dim = config.n_embd
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
-        self.rep_emb_encoder = CNNFixedSizeOutput(input_dim=256, output_len=20, output_dim=self.embed_dim)
+        self.rep_emb_encoder = ReducePoolings('max', 256, self.embed_dim)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.h = nn.ModuleList([ProGenBlock(config) for _ in range(config.n_layer)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -100,7 +100,8 @@ class ProGenSurfModel(ProGenPreTrainedModel):
         input_rep_mask = input_batch.get('input_rep_mask',None)
         input_rep = input_batch.get('input_rep', None)
         input_seq_len = input_batch.get('seq_len', None)
-        sec_struc = input_batch.get('sec_struc', False)
+        aa_res_ids = input_batch.get('aa_res_ids', None)
+        input_aa_len = input_batch.get('aa_len', None)
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError(
@@ -181,8 +182,8 @@ class ProGenSurfModel(ProGenPreTrainedModel):
                         cross_embeds = torch.cat(sliced_cross_embeds, dim=0)
                         inputs_embeds[input_rep_mask.bool()] = cross_embeds
                     else:
-                        rep_embeds = self.rep_emb_encoder(input_rep)
-                        sliced_rep_embeds = [rep_embeds[i, :, :] for i in range(rep_embeds.size(0))]
+                        rep_embeds = self.rep_emb_encoder(input_rep, aa_res_ids, input_aa_len, input_seq_len)
+                        sliced_rep_embeds = [rep_embeds[i, :input_seq_len[i], :] for i in range(rep_embeds.size(0))]
                         rep_embeds = torch.cat(sliced_rep_embeds, dim=0)
                         inputs_embeds[input_rep_mask.bool()] = rep_embeds
                 
@@ -386,7 +387,7 @@ class ProGenSurfForCausalLM(ProGenPreTrainedModel):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
         if input_batch.get('input_coord', None) is not None:
-            surf_rep = self.surf_encoder(input_batch['input_coord'], input_batch['input_aa'], input_batch['seq_len'])
+            surf_rep = self.surf_encoder(input_batch['input_coord'], input_batch['input_aa'], input_batch['aa_len'])
             input_batch['input_rep'] = surf_rep
         transformer_outputs = self.transformer(
             input_batch,

@@ -2,7 +2,7 @@ import pickle
 from tqdm import tqdm
 
 
-data_path = 'inference/progen2-small-p4m-finetuned2/e2/inference_test_hme.pkl'
+data_path = 'inference/progen2-small-p4m-finetuned1029/e2/inference_test_hm.pkl'
 with open(data_path, 'rb') as f:
     data = pickle.load(f)
 

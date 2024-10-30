@@ -1,7 +1,7 @@
 python3 inverse_folding/inverse_folding/finetune_surface.py \
     --model=/home/v-yantingli/mmp/checkpoints/progen2-small \
-    --train_file=/home/v-yantingli/mmp/data/surface_data/train \
-    --test_file=/home/v-yantingli/mmp/data/surface_data/valid \
+    --train_file=/home/v-yantingli/mmp/data/processed_surface_data/train \
+    --test_file=/home/v-yantingli/mmp/data/processed_surface_data/test \
     --device=cuda \
     --epochs=10 \
     --batch_size=8 \

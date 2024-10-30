@@ -2,10 +2,10 @@ import pickle
 from tqdm import tqdm
 
 
-data_path = 'inference/progen2-small-surface/e2/inference_surface'
+data_path = 'inference/progen2-small-surface/e8/inference_surface.pkl'
 with open(data_path, 'rb') as f:
     data = pickle.load(f)
-true_path = 'data/surface_data/test/seq.txt'
+true_path = 'data/processed_surface_data/test/seq.txt'
 with open(true_path, 'r') as f:
     true_seqs = f.readlines()
 true_seqs = [seq.strip() for seq in true_seqs]

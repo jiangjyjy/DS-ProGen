@@ -135,13 +135,10 @@ def get_res_id(fpath: str, chain_ids: List[str], start_pos, end_pos):
     return start_id, end_id
 
 
-def process_line(line, cif_list2, extra_data_path, raw_data_path):
+def process_line(line, data_path):
     line_elements = line.split(' ')
     cif = f'{line_elements[0][:4]}.cif'
-    if cif in cif_list2:
-        fpath = os.path.join(extra_data_path, cif)
-    else:
-        fpath = os.path.join(raw_data_path, cif)
+    fpath = os.path.join(data_path, cif)
     chain_id = line_elements[2].split('.')[0]
     all_pos = line_elements[2].split('.')[1].split(',')
     temp_list, unprocessed = [], []

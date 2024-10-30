@@ -51,9 +51,9 @@ def test_surface_file(input_file, surface_path, new_surface_path):
     lines = open(input_file, "r", encoding="utf-8").readlines()
 
     for i in range(0, len(lines), 2):
-        name = lines[i].strip()[1: 5]
+        name = lines[i].strip()[1:-2]
 
-        surface_file = os.path.join(surface_path, "pdb{}.vert".format(name))
+        surface_file = os.path.join(surface_path, "{}.vert".format(name))
         new_surface_file = os.path.join(new_surface_path, "{}.vert".format(name))
         if not os.path.exists(surface_file):
             continue
@@ -313,7 +313,7 @@ def extract_feature(input_file, output_seq, output_atom, output_coor, output_pdb
 
     for i in range(0, len(lines), 2):
         protein = lines[i+1]
-        name = lines[i].strip()[1: 5]
+        name = lines[i].strip()[1:-2]
         surface_file = os.path.join(surface_path, "{}.vert".format(name))
 
         if protein.strip() == "":
@@ -336,37 +336,34 @@ def extract_feature(input_file, output_seq, output_atom, output_coor, output_pdb
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--split", type=str, default="test")
-    parser.add_argument("--data_path", type=str)
-    parser.add_argument("--output_path", type=str)
-    FLAGS, _ = parser.parse_known_args()
-    split = FLAGS.split
-    file_path = FLAGS.data_path
-    output_path = FLAGS.output_path
-
-    surface_path = os.path.join(file_path, "msms")
-    os.system("mkdir -p {}".format(surface_path))
-    os.system("mkdir -p {}/{}".format(file_path, "msms_smooth"))
-    os.system("mkdir -p {}/{}".format(file_path, "normalize_msms_smooth"))
-    os.system("mkdir -p {}/{}".format(file_path, "octree_surface"))
-
+    file_path = '/home/v-yantingli/mmp/data/test_surface_data'
+    output_path = '/home/v-yantingli/mmp/data/processed_surface_data/test'
+    os.makedirs(output_path, exist_ok=True)
     # smoothing, fasta file for pdb & seq, cath42_data for vert file obtained from MSMS
-    input_file = os.path.join(file_path, "{}.fasta.txt".format(split))
+    os.makedirs(os.path.join(file_path, "msms_smooth"), exist_ok=True)
+    os.makedirs(os.path.join(file_path, "normalize_msms_smooth"), exist_ok=True)
+    os.makedirs(os.path.join(file_path, "octree_surface"), exist_ok=True)
+    surface_path = file_path
+    
+    input_file = os.path.join(file_path, "fasta.txt")
     test_surface_file(input_file, surface_path, os.path.join(file_path, "msms_smooth"))
+    print('1/4')
 
     # normalize
     normalize_coordinates(os.path.join(file_path, "msms_smooth"), os.path.join(file_path, "normalize_msms_smooth"))
+    print('2/4')
 
     # down sampling
     down_sampling(os.path.join(file_path, "normalize_msms_smooth"), os.path.join(file_path, "octree_surface"))
+    print('3/4')
 
-    output_seq = os.path.join(output_path, "{}.seq.txt".format(split))
-    out_coor = os.path.join(output_path, "{}.coor.txt".format(split))
-    out_atom = os.path.join(output_path, "{}.atom.txt".format(split))
-    out_pdb = os.path.join(output_path, "{}.pdb.txt".format(split))
+    output_seq = os.path.join(output_path, "seq.txt")
+    out_coor = os.path.join(output_path, "coor.txt")
+    out_atom = os.path.join(output_path, "atom.txt")
+    out_pdb = os.path.join(output_path, "pdb.txt")
     surface_path = os.path.join(file_path, "octree_surface")
     extract_feature(input_file, output_seq, out_atom, out_coor, out_pdb, surface_path)
+    print('4/4')
 
 
 
