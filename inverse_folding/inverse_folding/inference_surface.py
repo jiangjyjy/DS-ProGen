@@ -63,7 +63,7 @@ def inference(
                 'aa_len': torch.full((num_return_sequences,), len(aa)).to(device).to(torch.int32),
                 'aa_res_ids': aa_res_id.unsqueeze(0).expand(num_return_sequences, -1).to(device),
                 }
-    while generated.shape[-1] < min(seq_len[0] + 22, max_length):
+    while generated.shape[-1] < min(seq_len[0]*2 + 1, max_length):
         # using cached attn outputs from previous iterations
         output = model(input_batch=input_dict, past_key_values=past_key_values)
         past_key_values = output.past_key_values

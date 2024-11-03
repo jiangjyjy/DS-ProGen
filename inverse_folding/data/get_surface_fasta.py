@@ -3,8 +3,8 @@ from Bio import PDB
 from tqdm import tqdm
 
 
-file_path = '/home/v-yantingli/mmp/data/test_surface_data'
-pdb_path = '/home/v-yantingli/mmp/data/test_data'
+file_path = '/home/v-yantingli/mmp/afdb_v4_surface'
+pdb_path = '/home/v-yantingli/mmp/afdb_v4'
 pdb_list = [name.split('.')[0] for name in os.listdir(os.path.join(file_path)) if name.endswith('.vert')]
 
 amino_acid_dict = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C", "GLN": "Q", "GLU": "E",
@@ -14,7 +14,7 @@ amino_acid_dict = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C", "
 
 with open(os.path.join(file_path, 'fasta.txt'), 'w') as f:
     for filename in tqdm(pdb_list):
-        filepath = os.path.join(pdb_path, f'{filename}.pdb')
+        filepath = os.path.join(pdb_path, f'{filename}.pdb.pdb')
         parser = PDB.PDBParser(QUIET=True)
         structure = parser.get_structure(filename, filepath)
         first_aa_id = None

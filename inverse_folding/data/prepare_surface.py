@@ -67,6 +67,7 @@ def test_surface_file(input_file, surface_path, new_surface_path):
             line = line + " " + atom
             fw.write(line + "\n")
         fw.close()
+        os.remove(surface_file)
 
 
 def count_vertex_for_protein(file_path, seq_file):
@@ -180,6 +181,7 @@ def normalize_coordinates(file_path, new_path):
             line = line + " " + atom
             fw.write(line + "\n")
         fw.close()
+        os.remove(input_file)
 
 
 def down_sampling(file_path, new_path):
@@ -215,6 +217,7 @@ def down_sampling(file_path, new_path):
                 for sample in samples:
                     fw.write(sample)
             fw.close()
+            os.remove(input_file)
 
 
 def get_coor_atom(input_file):
@@ -336,8 +339,8 @@ def extract_feature(input_file, output_seq, output_atom, output_coor, output_pdb
 
 
 if __name__ == "__main__":
-    file_path = '/home/v-yantingli/mmp/data/test_surface_data'
-    output_path = '/home/v-yantingli/mmp/data/processed_surface_data/test'
+    file_path = '/home/v-yantingli/mmp/afdb_v4_surface'
+    output_path = '/home/v-yantingli/mmp/data/processed_surface_data/train_afdb'
     os.makedirs(output_path, exist_ok=True)
     # smoothing, fasta file for pdb & seq, cath42_data for vert file obtained from MSMS
     os.makedirs(os.path.join(file_path, "msms_smooth"), exist_ok=True)

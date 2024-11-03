@@ -1,5 +1,5 @@
 python3 inverse_folding/inverse_folding/inference_surface.py \
-    --model=/home/v-yantingli/mmp/ckpt/progen2-small-surface/e8 \
+    --model=/home/v-yantingli/mmp/ckpt/progen2-small-surface_1103/e2 \
     --device=cuda \
     --batch_size=8 \
     --max_length=1024 \

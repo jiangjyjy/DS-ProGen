@@ -95,6 +95,8 @@ class ReducePoolings(nn.Module):
         super(ReducePoolings, self).__init__()
         self.reduction = reduction
         self.layer = nn.Linear(in_features, out_features)
+        # self.fc_layer2 = nn.Linear(out_features, out_features)
+        # self.act = nn.ReLU()
 
     def forward(self, input_rep, aa_res_ids, input_aa_len, input_seq_len):
         # input_rep: [batch_size, input_aa_len, feature_dim]
