@@ -124,9 +124,10 @@ def load_data(file: str, sec: bool) -> Tuple[List[str], List[str]]:
     prefixes = set()
     with open(file, "rb") as f:
         lines = pickle.load(f)
-        for line in lines:
-            for s in line['sec_struc']:
-                prefixes.add(f'<{s}>')
+        if sec:
+            for line in lines:
+                for s in line['sec_struc']:
+                    prefixes.add(f'<{s}>')
     if sec:
         prefixes = sorted(list(prefixes))
     else:

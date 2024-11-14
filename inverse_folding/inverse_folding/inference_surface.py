@@ -27,6 +27,7 @@ def inference(
     coord: Optional[torch.Tensor],
     seq_len,
     aa_res_id,
+    input_rep,
     max_length: int,
     num_return_sequences: int,
     temperature: float = 1.0,
@@ -60,6 +61,7 @@ def inference(
                 'input_coord': coord.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device),
                 'input_rep_mask': rep_mask,
                 'seq_len': seq_len,
+                'input_rep': input_rep.unsqueeze(0).expand(num_return_sequences, -1, -1).to(device),
                 'aa_len': torch.full((num_return_sequences,), len(aa)).to(device).to(torch.int32),
                 'aa_res_ids': aa_res_id.unsqueeze(0).expand(num_return_sequences, -1).to(device),
                 }
@@ -204,6 +206,8 @@ def main(args):
     coord_list = read_coor_data(os.path.join(args.test_data_dir, 'coor.txt'))
     seq_len_list = read_seq_len(os.path.join(args.test_data_dir, 'seq.txt'))
     first_id_list = read_first_id(os.path.join(args.test_data_dir, 'pdb.txt'))
+    with open(os.path.join(args.test_data_dir, 'rep.pkl'), 'rb') as f:
+        rep_list = pickle.load(f) 
     for i in range(len(aa_id_list)):
         aa_id_list[i] -= first_id_list[i]
 
@@ -217,8 +221,8 @@ def main(args):
     logger.debug(f"Sampling parameters: top_k={args.k}, temperature={args.t}")
 
     pred_seq_list = []
-    for i, d in tqdm(enumerate(zip(aa_list, aa_id_list, coord_list, seq_len_list)), total=len(aa_list)):
-        aa, aa_res_id, coord, seq_len = d
+    for i, d in tqdm(enumerate(zip(aa_list, aa_id_list, coord_list, seq_len_list, rep_list)), total=len(aa_list)):
+        aa, aa_res_id, coord, seq_len, input_rep = d
         # sec_struc = d.get('sec_struc', None)
         sec_struc = None
 
@@ -230,6 +234,7 @@ def main(args):
             coord=coord,
             seq_len=seq_len,
             aa_res_id=aa_res_id,
+            input_rep=input_rep,
             num_return_sequences=args.batch_size,
             temperature=args.t,
             max_length=args.max_length,

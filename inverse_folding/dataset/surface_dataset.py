@@ -2,6 +2,7 @@ import os
 import torch
 from torch.utils.data import Dataset
 from tokenizers import Tokenizer
+import pickle
 
 
 class Surface_dataset(Dataset):
@@ -12,12 +13,14 @@ class Surface_dataset(Dataset):
         aas, aa_ids = self.read_aa_data(os.path.join(self.data_path, 'atom.txt'))
         coords = self.read_coor_data(os.path.join(self.data_path, 'coor.txt'))
         first_ids = self.read_first_id(os.path.join(self.data_path, 'pdb.txt'))
-        assert len(seqs) == len(aas) == len(aa_ids) == len(coords) == len(first_ids), f"len(seqs) {len(seqs)}, len(aas) {len(aas)}, len(coords) {len(coords)}, len(first_ids) {len(first_ids)}"
+        with open(os.path.join(self.data_path, 'rep.pkl'), 'rb') as f:
+            rep = pickle.load(f)
+        assert len(seqs) == len(aas) == len(aa_ids) == len(coords) == len(first_ids) == len(rep), f"len(seqs) {len(seqs)}, len(aas) {len(aas)}, len(aa_ids) {len(aa_ids)}, len(coords) {len(coords)}, len(first_ids) {len(first_ids)}, len(rep) {len(rep)}"
         for i in range(len(seqs)):
             assert aa_ids[i][0] >= first_ids[i], f"aa_ids[i][0] {aa_ids[i][0]} should be greater than or equal to first_ids[i] {first_ids[i]}"
             assert aa_ids[i][-1] < first_ids[i] + len(seqs[i]), f"aa_ids[i][-1] {aa_ids[i][-1]} should be less than first_ids[i] {first_ids[i]} + len(seqs[i]) {len(seqs[i])}"
             aa_ids[i] -= first_ids[i]
-        self.lines = [(x, y, z, r) for x, y, z, r in zip(seqs, aas, coords, aa_ids) if len(x) <= filter_seq_len]
+        self.lines = [(x, y, z, r, p) for x, y, z, r, p in zip(seqs, aas, coords, aa_ids, rep) if (len(x) <= filter_seq_len and len(x) == p.size(0))]
 
     def __len__(self):
         return len(self.lines)
@@ -80,13 +83,14 @@ class Surface_dataset(Dataset):
     
     def __getitem__(self, idx):
         item = dict()
-        seq, aa, coord, aa_ids = self.lines[idx]
+        seq, aa, coord, aa_ids, rep = self.lines[idx]
         assert 3 * len(aa) == len(coord), f"len(aa) {len(aa)} should be equal to len(coord) {len(coord)}"
         item['aa_len'] = len(aa)
         item['seq_len'] = len(seq)
         item['input_aa'] = aa
         item['input_coord'] = coord
         item['aa_res_ids'] = aa_ids
+        item['input_rep'] = rep
         seq_id = torch.tensor(self.tokenizer.encode(f'1{seq}2').ids)
         rep_x =  torch.zeros(len(seq))
         item['input_ids'] = torch.cat((rep_x, seq_id)).to(torch.int32)
@@ -122,6 +126,7 @@ def collate_fn(batch):
     input_rep_mask = [item['input_rep_mask'] for item in batch]
     input_aa = [item['input_aa'] for item in batch]
     input_coord = [item['input_coord'] for item in batch]
+    input_rep = [item['input_rep'].to('cpu') for item in batch]
     labels = [item['label'] for item in batch]
     aa_ids  = [item['aa_res_ids'] for item in batch]
     seq_len = torch.tensor([item['seq_len'] for item in batch])
@@ -129,11 +134,13 @@ def collate_fn(batch):
     
     # Find the max length for padding
     max_len = max([x.size(0) for x in input_ids])
+    max_rep_len = max([x.size(0) for x in input_rep])
     
     # Pad input_ids, input_rep_mask, and labels to the same length
     padded_input_ids = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_ids])
     padded_input_rep_mask = torch.stack([torch.cat([x, torch.zeros(max_len - x.size(0), dtype=torch.int32)]) for x in input_rep_mask])
     padded_labels = torch.stack([torch.cat([x, torch.full((max_len - x.size(0),), -100, dtype=torch.int32)]) for x in labels])
+    padded_input_rep = torch.stack([torch.cat([x, torch.zeros(max_rep_len - x.size(0), x.size(1))]) for x in input_rep])
     padded_aa_ids = collate_features(aa_ids)
     padded_inout_aa = collate_features(input_aa)
     padded_input_coord = collate_features(input_coord)
@@ -142,6 +149,7 @@ def collate_fn(batch):
     return {
         'input_ids': padded_input_ids,
         'input_rep_mask': padded_input_rep_mask,
+        'input_rep': padded_input_rep,
         'input_aa': padded_inout_aa,
         'input_coord': padded_input_coord,
         'label': padded_labels,

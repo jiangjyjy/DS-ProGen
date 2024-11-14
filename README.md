@@ -1,4 +1,15 @@
 # Multimodality ProteinLLM
+(see [paper](https://www.arxiv.org/))
+
+## Introduction
+
+
+## Models
+
+| Model | Checkpoint |
+| ------ |---------- |
+| progen2-small	   | https://storage.googleapis.com/sfr-progen-research/checkpoints/progen2-small.tar.gz |
+
 
 ## Setup Environment
 
@@ -18,20 +29,23 @@ pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -
 
 ## Inverse Folding
 ### Data Processing
+```bash
+cd inverse_folding/data
+```
+
 
 #### Data Source
 
-The dataset is sourced from the [PRIDE Benchmark Protein Design](https://github.com/chq1155/PRIDE_Benchmark_ProteinDesign). Please refer to the repository for detailed information on the dataset structure and content.
+Pretrain data is from [AFDB](https://www.alphafold.ebi.ac.uk/) and [ESM Metagenomic Atlas](https://esmatlas.com/), which can be found in a compressed format on [Foldcomp Databases](https://foldcomp.steineggerlab.workers.dev/).
+
+Other data is sourced from the [PRIDE Benchmark Protein Design](https://github.com/chq1155/PRIDE_Benchmark_ProteinDesign). Please refer to the repository for detailed information on the dataset structure and content.
 ***
-#### Download Extra data
+#### Download data
 
-#### `download_extra_data.py`
+#### `download_data.py`
 
-A relatively complete PDB file dataset is assumed has been downloaded. 
+This script is responsible for downloading complete file data in the data list. 
 
-This script is responsible for downloading additional file data that is not included in the original file dataset but in the data list. 
-
-If some files are missing, run this program to fill in the gaps.
 ***
 #### Data preparation
 #### `train_data_prepare.py, test_data_prepare.py`
@@ -39,25 +53,52 @@ If some files are missing, run this program to fill in the gaps.
 After getting all data file, run this to process raw data to the form for training and reference.
 
 Notice that it's better if running on a device have gpu as the coords should be encoded in advance.
+
+#### `afdb_data_prepare.py`
+
+If the dataset is too large to save the coords feature, run this to save as `lmdb` format.
 ***
+#### Surface Data preparation
+
+Run the following scripts in order to prepare surface data:
+
+    1. extract_cath_fragment.py
+    2. msms_get_surface.py
+    3. get_surface_fasta.py
+    4. prepare_surface.py
+
+
 ### How to Run
 #### Fine-tuning
+finetune on backbone data:
 ```bash
 bash inverse_folding/scripts/finetune.sh
 ```
-
-#### Imference
+or finetune on surface data:
+```bash
+bash inverse_folding/scripts/finetune_surface.sh
+```
+#### Inference
 ```bash
 bash inverse_folding/scripts/inference.sh
 ```
-
+or
+```bash
+bash inverse_folding/scripts/inference_surface.sh
+```
 #### Sampling
 ```bash
 bash inverse_folding/scripts/sample.sh
 ```
 ***
-### Metrics
+### Evaluation
 
-Run `inverse_folding/inverse_folding/metric.py` to get result.
+Run `inverse_folding/inverse_folding/evaluate.py` or `inverse_folding/inverse_folding/evaluate_surface.py` to get result.
 
+
+## Citation
+Please consider citing the following paper if you find our codes helpful. Thank you!
+```
+
+```
 

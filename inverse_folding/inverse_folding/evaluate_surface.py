@@ -2,7 +2,7 @@ import pickle
 from tqdm import tqdm
 
 
-data_path = 'inference/progen2-small-surface_1103/e2/inference_surface.pkl'
+data_path = 'inference/progen2-small-surface-p4f-finetuned/e3/inference_surface.pkl'
 with open(data_path, 'rb') as f:
     data = pickle.load(f)
 true_path = 'data/processed_surface_data/test/seq.txt'

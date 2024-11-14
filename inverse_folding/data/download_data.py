@@ -20,16 +20,6 @@ download_set = set()
 for line in train_lines:
     download_set.add(line.split(' ')[0][:4])
 
-# Download cif
-# for line in tqdm(unseen, desc='Download:'):
-#     pdb_id = line.strip()
-#     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-#     response = requests.get(url)
-    
-#     # save cif
-#     with open(os.path.join(save_path, f"{pdb_id}.cif"), "wb") as cif_file:
-#         cif_file.write(response.content)
-
 
 def download_pdb(pdb_id, save_path):
     url = f"https://files.rcsb.org/download/{pdb_id}.cif"
