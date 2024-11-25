@@ -3,8 +3,8 @@ from Bio import PDB
 from tqdm import tqdm
 
 
-file_path = '/home/v-yantingli/mmp/afdb_v4_surface'
-pdb_path = '/home/v-yantingli/mmp/afdb_v4'
+file_path = 'afdb_v4_surface'
+pdb_path = 'afdb_v4'
 pdb_list = [name.split('.')[0] for name in os.listdir(os.path.join(file_path)) if name.endswith('.vert')]
 
 amino_acid_dict = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C", "GLN": "Q", "GLU": "E",

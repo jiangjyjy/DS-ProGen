@@ -339,8 +339,8 @@ def extract_feature(input_file, output_seq, output_atom, output_coor, output_pdb
 
 
 if __name__ == "__main__":
-    file_path = '/home/v-yantingli/mmp/afdb_v4_surface'
-    output_path = '/home/v-yantingli/mmp/data/processed_surface_data/train_afdb'
+    file_path = 'afdb_v4_surface'
+    output_path = 'data/processed_surface_data/train_afdb'
     os.makedirs(output_path, exist_ok=True)
     # smoothing, fasta file for pdb & seq, cath42_data for vert file obtained from MSMS
     os.makedirs(os.path.join(file_path, "msms_smooth"), exist_ok=True)

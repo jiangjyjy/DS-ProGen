@@ -8,4 +8,4 @@ python3 inverse_folding/inverse_folding/sample.py \
     --t=0.1 \
     --k=10 \
     --prompt="1MEVVIVTGMSGAGK" \
-    --coords='/home/v-yantingli/mmp/coords.pkl'
+    --coords='coords.pkl'

@@ -5,7 +5,7 @@ import pickle
 # with open('rep_name.pkl', 'rb') as f:
 #   rep_name = pickle.load(f)
 
-with foldcomp.open("/home/v-yantingli/mmp/foldcomp_data/afdb_swissprot_v4") as db:
+with foldcomp.open("foldcomp_data/afdb_swissprot_v4") as db:
   pbar = tqdm(total=len(db))
   for (name, pdb) in db:
     # save entries as seperate pdb files
@@ -18,7 +18,7 @@ with foldcomp.open("/home/v-yantingli/mmp/foldcomp_data/afdb_swissprot_v4") as d
 # with open('lookup1.pkl', 'rb') as f:
 #   ids = pickle.load(f)
 
-# with foldcomp.open("/home/v-yantingli/mmp/foldcomp_data/highquality_clust30",ids=ids) as db:
+# with foldcomp.open("mmp/foldcomp_data/highquality_clust30",ids=ids) as db:
 #   pbar = tqdm(total=len(db))
 #   for (name, pdb) in db:
 #     # save entries as seperate pdb files

@@ -10,29 +10,29 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def calculate_tmscore(pdb_file1, pdb_file2):
     """
-    使用 US-align 计算两个蛋白质结构之间的 TM-score。
+    uses US-align to calculate the TM-score between two protein structures.
 
-    参数：
-    pdb_file1: 第一个 PDB 文件路径
-    pdb_file2: 第二个 PDB 文件路径
+    parameters: 
+    pdb_file1: str, path to the first PDB file
+    pdb_file2: str, path to the second PDB file
     """
 
-    # 构造 US-align 命令
+    # US-align command
     command = ['USalign', pdb_file1, pdb_file2]
 
     try:
-        # 执行命令并捕获输出
+        # run the command and capture the output
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        # 检查是否成功执行
+        # check for errors
         if result.returncode != 0:
             print(f'Error running US-align: {result.stderr}')
             return
 
-        # 解析输出，提取 TM-score 值
+        # extract the TM-score from the output
         output = result.stdout
 
-        # 使用正则表达式提取 TM-score
+        # use regex to find the TM-score
         tm_score_search = re.search(r'TM-score=\s*(\d+\.\d+)', output)
         if tm_score_search:
             tm_score = float(tm_score_search.group(1))
@@ -47,29 +47,29 @@ def calculate_tmscore(pdb_file1, pdb_file2):
 
 def calculate_rmsd(pdb_file1, pdb_file2, selection='name CA', mobile_obj='mol1', target_obj='mol2'):
     """
-    计算两个蛋白质结构之间的 RMSD。
+    calculates the RMSD between two protein structures using PyMOL's align command.
 
-    参数：
-    pdb_file1: 第一个 PDB 文件路径（移动结构）
-    pdb_file2: 第二个 PDB 文件路径（目标结构）
-    selection: 对齐和计算 RMSD 的原子选择（默认只使用 Cα 原子）
-    mobile_obj: 加载第一个 PDB 文件时的对象名称
-    target_obj: 加载第二个 PDB 文件时的对象名称
+    parameters: 
+    pdb_file1: str, path to the first PDB file
+    pdb_file2: str, path to the second PDB file
+    selection: str, atom selection for alignment and RMSD calculation (default: 'name CA')
+    mobile_obj: str, object name for loading the first PDB file
+    target_obj: str, object name for loading the second PDB file
     """
 
-    # 加载 PDB 文件
+    # load the PDB files into PyMOL
     cmd.load(pdb_file1, mobile_obj)
     cmd.load(pdb_file2, target_obj)
 
-    # 进行刚性对齐
+    # rigid body alignment
     alignment_rms = cmd.align(f'{mobile_obj} and {selection}', f'{target_obj} and {selection}')
 
-    # 获取对齐后的 RMSD 值
+    # get the aligned RMSD value
     rmsd_value = alignment_rms[0]
-    # 可选：保存对齐后的结构
+    # optional: save the aligned structure
     # cmd.save('aligned_structure.pse')
 
-    # 清除加载的对象
+    # clean up the loaded objects
     cmd.delete('all')
 
     return round(rmsd_value, 4)
@@ -192,7 +192,7 @@ def calculate_innersim():
 def calculate_baseline():
     for tb in os.listdir('results/baseline'):
         df = pd.read_csv(os.path.join('results/baseline', tb))
-        pred_folder = '/msralaphilly2/ml-la/v-yantingli/pred_struct/' + tb.replace('.csv', '.output')
+        pred_folder = 'pred_struct/' + tb.replace('.csv', '.output')
         tmsc = []
         rmsd = []
         for file_name in tqdm(df['file_name']):

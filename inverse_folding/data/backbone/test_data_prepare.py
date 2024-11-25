@@ -9,13 +9,13 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-model_path = '/home/v-yantingli/mmp/ckpt/coords_encoder'
+model_path = 'ckpt/coords_encoder'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-raw_data_path = '/home/v-yantingli/mmp/data/test_data'
+raw_data_path = 'data/test_data'
 cif_list = os.listdir(raw_data_path)
-data_list_path = '/home/v-yantingli/mmp/data/data_list/test'
+data_list_path = 'data/data_list/test'
 data_list = os.listdir(data_list_path)
-save_path = '/home/v-yantingli/mmp/data/processed_data_new'
+save_path = 'data/processed_data_new'
 os.makedirs(save_path,exist_ok=True)
 
 

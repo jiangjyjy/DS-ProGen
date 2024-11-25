@@ -189,7 +189,7 @@ def main(args: argparse.Namespace):
     def create_tokenizer_custom(file):
         with open(file, 'r') as f:
             return Tokenizer.from_str(f.read())
-    tokenizer = create_tokenizer_custom(file='/home/v-yantingli/mmp/checkpoints/tokenizer.json')
+    tokenizer = create_tokenizer_custom(file='checkpoints/tokenizer.json')
     tokenizer.enable_truncation(max_length=1024)
     prefixes = []
     logger.info(f"Found prefixes: {prefixes}")

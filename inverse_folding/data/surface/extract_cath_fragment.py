@@ -8,10 +8,10 @@ import os
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-data_list_path = '/home/v-yantingli/mmp/data/data_list/train&valid'
+data_list_path = 'data/data_list/train&valid'
 data_list = os.listdir(data_list_path)
-data_path = '/home/v-yantingli/mmp/data/cath43_data'
-save_path = '/home/v-yantingli/mmp/data/cath43_filter_pdb'
+data_path = 'data/cath43_data'
+save_path = 'data/cath43_filter_pdb'
 lines = []
 for file_name in data_list:
     with open(os.path.join(data_list_path, file_name), 'r') as file:

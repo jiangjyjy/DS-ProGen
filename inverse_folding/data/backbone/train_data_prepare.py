@@ -9,14 +9,14 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import warnings
 warnings.filterwarnings("ignore")
 
-model_path = '/home/v-yantingli/mmp/ckpt/coords_encoder'
+model_path = 'ckpt/coords_encoder'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 data_path = '/home/v-yantingli/pdb_mmcif/mmcif_files'
 cif_list = os.listdir(data_path)
-data_list_path = '/home/v-yantingli/mmp/data/data_list/train&valid'
+data_list_path = 'data/data_list/train&valid'
 data_list = sorted(os.listdir(data_list_path))
 valid_set_num = [5] # valid_set_num[i] is between 0-9
-save_path = '/home/v-yantingli/mmp/data/processed_data_new'
+save_path = 'data/processed_data_new'
 os.makedirs(save_path,exist_ok=True)
 
 # Load data list

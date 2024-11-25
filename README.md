@@ -25,6 +25,9 @@ pip3 install -r requirements.txt
 # Install PyG
 pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.2.0+cu121.html
 
+# for surface data processing
+conda install msms
+
 ```
 
 ## Inverse Folding
@@ -47,7 +50,10 @@ Other data is sourced from the [PRIDE Benchmark Protein Design](https://github.c
 This script is responsible for downloading complete file data in the data list. 
 
 ***
-#### Data preparation
+#### Backbone Data preparation
+```bash
+cd backbone
+```
 #### `train_data_prepare.py, test_data_prepare.py`
 
 After getting all data file, run this to process raw data to the form for training and reference.
@@ -59,7 +65,9 @@ Notice that it's better if running on a device have gpu as the coords should be 
 If the dataset is too large to save the coords feature, run this to save as `lmdb` format.
 ***
 #### Surface Data preparation
-
+```bash
+cd surface
+```
 Run the following scripts in order to prepare surface data:
 
     1. extract_cath_fragment.py

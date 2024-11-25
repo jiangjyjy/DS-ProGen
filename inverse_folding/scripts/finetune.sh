@@ -1,7 +1,7 @@
 python3 inverse_folding/inverse_folding/finetune.py \
-    --model=/home/v-yantingli/mmp/ckpt/progen2-small-p80k/e2 \
-    --train_file=/home/v-yantingli/mmp/data/processed_8w_data/train.pkl \
-    --test_file=/home/v-yantingli/mmp/data/processed_8w_data/test.pkl \
+    --model=ckpt/progen2-small-p80k/e2 \
+    --train_file=data/processed_8w_data/train.pkl \
+    --test_file=data/processed_8w_data/test.pkl \
     --device=cuda \
     --epochs=5 \
     --batch_size=8 \
@@ -12,6 +12,6 @@ python3 inverse_folding/inverse_folding/finetune.py \
     --eval_steps=1 \
     --checkpoint_steps=1 \
     --eval_before_train \
-    --save_path=/home/v-yantingli/mmp/ckpt/progen2-small-p80k-finetuned \
+    --save_path=ckpt/progen2-small-p80k-finetuned \
     # --sec_struc \
     # --model_parallel \

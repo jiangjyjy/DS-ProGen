@@ -3,8 +3,8 @@ import os
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 
-data_list_path = '/home/v-yantingli/mmp/data/data_list/train&valid'
-save_path = '/home/v-yantingli/mmp/data/cath43_data'
+data_list_path = 'data/data_list/train&valid'
+save_path = 'data/cath43_data'
 os.makedirs(save_path,exist_ok=True)
 
 # Load data list 

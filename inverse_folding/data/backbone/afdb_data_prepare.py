@@ -1,7 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data.util import process_afdb, load_model, obj2bstr
+from data.util import process_afdb, obj2bstr
 from tqdm import tqdm
 import pickle
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -12,20 +12,23 @@ import zlib
 warnings.filterwarnings("ignore")
 gc.collect()
 
-raw_data_path = '/home/v-yantingli/mmp/afdb_v4'
+raw_data_path = 'afdb_v4'
 cif_list = os.listdir(raw_data_path)
 # cif_list = cif_list[:1000]  # for test
-save_path = '/home/v-yantingli/mmp/data/afdb_data/afdb.lmdb'
+save_path = 'data/afdb_data/afdb.lmdb'
 env = lmdb.open(save_path, map_size=8*1024**4)
 
-with open('/home/v-yantingli/mmp/data/processed_data_new/test_hme.pkl', 'rb') as f:
+with open('data/processed_data_new/test_hme.pkl', 'rb') as f:
     test_data = pickle.load(f)
 test_seq = [d['seq'] for d in test_data]
-del test_data
-with open('/home/v-yantingli/mmp/seq_list.pkl', 'rb') as f:
-    exist_seq = pickle.load(f)
-exist_seq = exist_seq + test_seq
-exist_seq = set(exist_seq)
+del test_data # free memory
+
+# optional: load existing seq list to avoid duplicate data
+# with open('seq_list.pkl', 'rb') as f:
+#     exist_seq = pickle.load(f)
+# exist_seq = exist_seq + test_seq
+# exist_seq = set(exist_seq)
+exist_seq = set()
 
 # Use multiprocess
 def process_data(lines: list[str], raw_data_path: str, use: str):
@@ -68,8 +71,9 @@ for i in range(0, len(cif_list), batch_size):
         os.remove(os.path.join(raw_data_path, file))
     gc.collect()
 
-with open('/home/v-yantingli/mmp/seq_list.pkl', 'wb') as f:
-    pickle.dump(list(exist_seq), f)
+# optional: save seq list
+# with open('seq_list.pkl', 'wb') as f:
+#     pickle.dump(list(exist_seq), f)
 
 
     

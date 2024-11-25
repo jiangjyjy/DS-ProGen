@@ -45,8 +45,8 @@ def process_pdb_file(pdb_file):
         generate_surface(pdb_path, output_dir)
 
 if __name__ == "__main__":
-    pdb_dir = '/home/v-yantingli/mmp/afdb_v4'
-    output_dir = "/home/v-yantingli/mmp/afdb_v4_surface"
+    pdb_dir = 'afdb_v4'
+    output_dir = "afdb_v4_surface"
     
     # Limit the files to the first 100000 for this example
     pdb_files = os.listdir(pdb_dir)[:100000]

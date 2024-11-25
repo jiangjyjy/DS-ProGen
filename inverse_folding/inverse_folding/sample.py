@@ -252,13 +252,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="/home/v-yantingli/mmp/checkpoints/progen2-small",
+        default="checkpoints/progen2-small",
         help="Hugging Face model name or path to the model directory. If path, should contain tokenizer.json, config.json and pytorch_model.bin.",
     )
     parser.add_argument(
         "--rep_model",
         type=str,
-        default="/home/v-yantingli/mmp/ckpt/coords_encoder",
+        default="ckpt/coords_encoder",
     )  
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
