@@ -1,4 +1,4 @@
-# Multimodality ProteinLLM
+# iProFold
 (see [paper](https://www.arxiv.org/))
 
 ## Introduction
