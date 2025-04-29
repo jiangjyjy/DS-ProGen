@@ -5,10 +5,7 @@
 
 
 ## Models
-
-| Model | Checkpoint |
-| ------ |---------- |
-| progen2-small	   | https://storage.googleapis.com/sfr-progen-research/checkpoints/progen2-small.tar.gz |
+Coming soon
 
 
 ## Setup Environment
