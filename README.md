@@ -1,11 +1,8 @@
-# iProFold
-(see [paper](https://www.arxiv.org/))
+# DS-ProGen
+
+DS-ProGen: A Dual-Structure Deep Language Model for Functional Protein Design
 
 ## Introduction
-
-
-## Models
-Coming soon
 
 
 ## Setup Environment
@@ -99,11 +96,3 @@ bash inverse_folding/scripts/sample.sh
 ### Evaluation
 
 Run `inverse_folding/inverse_folding/evaluate.py` or `inverse_folding/inverse_folding/evaluate_surface.py` to get result.
-
-
-## Citation
-Please consider citing the following paper if you find our codes helpful. Thank you!
-```
-
-```
-
