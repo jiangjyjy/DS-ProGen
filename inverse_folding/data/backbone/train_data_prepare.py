@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 
 model_path = 'ckpt/coords_encoder'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-data_path = '/home/v-yantingli/pdb_mmcif/mmcif_files'
+data_path = 'pdb_mmcif/mmcif_files'
 cif_list = os.listdir(data_path)
 data_list_path = 'data/data_list/train&valid'
 data_list = sorted(os.listdir(data_list_path))
