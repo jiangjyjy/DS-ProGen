@@ -95,4 +95,4 @@ bash inverse_folding/scripts/sample.sh
 ***
 ### Evaluation
 
-Run `inverse_folding/inverse_folding/evaluate.py` or `inverse_folding/inverse_folding/evaluate_surface.py` to get result.
+Run `inverse_folding/inverse_folding/evaluate.py` or `inverse_folding/inverse_folding/evaluate_surface.py` to get the results.
