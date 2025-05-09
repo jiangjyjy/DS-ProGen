@@ -48,7 +48,7 @@ class FAEncoder(FrameAveraging):
                 num_layers=n_layers,
                 dropout=dropout,
                 bidirectional=bidirectional,
-            ).float().cuda() # .cuda() is required...no idea why
+            ).float().cuda()
         else:
             raise NotImplementedError
 
@@ -108,10 +108,6 @@ def unsorted_segment_mean(data, segment_ids, num_segments):
 
 
 class E_GCL_RM_Node(nn.Module):
-    """
-    E(n) Equivariant Convolutional Layer
-    re
-    """
 
     def __init__(self, input_nf, output_nf, hidden_nf, edges_in_d=0, act_fn=nn.SiLU(), residual=True, attention=False,
                  normalize=False, coords_agg='mean', tanh=False):
@@ -134,13 +130,6 @@ class E_GCL_RM_Node(nn.Module):
         layer = nn.Linear(hidden_nf, 1, bias=False)
         torch.nn.init.xavier_uniform_(layer.weight, gain=0.001)
 
-        # coord_mlp = []
-        # coord_mlp.append(nn.Linear(hidden_nf, hidden_nf))
-        # coord_mlp.append(act_fn)
-        # coord_mlp.append(layer)
-        # if self.tanh:
-        #     coord_mlp.append(nn.Tanh())
-        # self.coord_mlp = nn.Sequential(*coord_mlp)
 
         self.node_gate = nn.Sequential(
             nn.Linear(hidden_nf, hidden_nf),
@@ -154,11 +143,6 @@ class E_GCL_RM_Node(nn.Module):
                 nn.Linear(hidden_nf, 1))
 
     def edge_model(self, source, target, radial, edge_attr, batch_size, k):
-        # if edge_attr is None:  # Unused.
-        #     out = torch.cat([source, target, radial], dim=1).to(device)
-        # else:
-        #     out = torch.cat([source, target, radial, edge_attr], dim=1).to(device)
-        # computing m_{ij}
         out = torch.cat([source, target, radial], dim=1).to(device)
         out = self.edge_mlp(out.float())
         # need to use softmax to normalize
@@ -208,11 +192,6 @@ class E_GCL_RM_Node(nn.Module):
         return radial, coord_diff
 
     def forward(self, h, edge_index, coord, edge_attr=None, node_attr=None, batch_size=1, k=30):
-        """
-        h: [batch * length, 320]
-        edges: [B * L * L, B * L * L]
-        coord: [batch * length, 3]
-        """
         row, col = edge_index
         radial, coord_diff = self.coord2radial(edge_index, coord)   # [B * L * 30], [B * L * 30, 3]
         edge_feat = self.edge_model(h[row], h[col], radial, edge_attr, batch_size, k)   # m_{ij}, [B * L * 30, dim]
@@ -225,25 +204,6 @@ class E_GCL_RM_Node(nn.Module):
 class EGNN(nn.Module):
     def __init__(self, in_node_nf, hidden_nf, out_node_nf, in_edge_nf=0, device='cpu', act_fn=nn.SiLU(), n_layers=4,
                  residual=True, attention=False, normalize=False, tanh=False):
-        '''
-        :param in_node_nf: Number of features for 'h' at the input
-        :param hidden_nf: Number of hidden features
-        :param out_node_nf: Number of features for 'h' at the output
-        :param in_edge_nf: Number of features for the edge features
-        :param device: Device (e.g. 'cpu', 'cuda:0',...)
-        :param act_fn: Non-linearity
-        :param n_layers: Number of layer for the EGNN
-        :param residual: Use residual connections, we recommend not changing this one
-        :param attention: Whether using attention or not
-        :param normalize: Normalizes the coordinates messages such that:
-                    instead of: x^{l+1}_i = x^{l}_i + Σ(x_i - x_j)phi_x(m_ij)
-                    we get:     x^{l+1}_i = x^{l}_i + Σ(x_i - x_j)phi_x(m_ij)/||x_i - x_j||
-                    We noticed it may help in the stability or generalization in some future works.
-                    We didn't use it in our paper.
-        :param tanh: Sets a tanh activation function at the output of phi_x(m_ij). I.e. it bounds the output of
-                        phi_x(m_ij) which definitely improves in stability but it may decrease in accuracy.
-                        We didn't use it in our paper.
-        '''
 
         super(EGNN, self).__init__()
         self.input_nf = in_node_nf
@@ -270,17 +230,8 @@ class EGNN(nn.Module):
         return h, x
 
 def get_surface_aa_feature():
-    # HYDROPATHY = {"I": 4.5, "V": 4.2, "L": 3.8, "F": 2.8, "C": 2.5, "M": 1.9, "A": 1.8, "W": -0.9, "G": -0.4,
-    #               "T": -0.7, "S": -0.8, "Y": -1.3, "P": -1.6, "H": -3.2, "N": -3.5, "D": -3.5, "Q": -3.5, "E": -3.5,
-    #               "K": -3.9, "R": -4.5}
-    # VOLUME = {'#': 0, "G": 60.1, "A": 88.6, "S": 89.0, "C": 108.5, "D": 111.1, "P": 112.7, "N": 114.1, "T": 116.1,
-    #           "E": 138.4, "V": 140.0, "Q": 143.8, "H": 153.2, "M": 162.9, "I": 166.7, "L": 166.7, "K": 168.6,
-    #           "R": 173.4, "F": 189.9, "Y": 193.6, "W": 227.8}
     CHARGE = {**{'R': 1, 'K': 1, 'D': -1, 'E': -1, 'H': 0.1}, **{x: 0 for x in 'ABCFGIJLMNOPQSTUVWXYZ'}} # *
     POLARITY = {**{x: 1 for x in 'RNDQEHKSTY'}, **{x: 0 for x in "ACGILMFPWV"}}
-    # ACCEPTOR = {**{x: 1 for x in 'DENQHSTY'}, **{x: 0 for x in "RKWACGILMFPV"}}
-    # DONOR = {**{x: 1 for x in 'RKWNQHSTY'}, **{x: 0 for x in "DEACGILMFPV"}}
-    # PMAP = lambda x: [HYDROPATHY[x] / 5, CHARGE[x], POLARITY[x], ACCEPTOR[x], DONOR[x]]
     PMAP = lambda x: [POLARITY[x], CHARGE[x]]
 
     alphabet = 'ACDEFGHIKLMNPQRSTVWY'
@@ -304,9 +255,6 @@ def get_edges(n_nodes, k, indices):
 
 def get_edges_batch(n_nodes, batch_size, coords, k=30):
     rows, cols = [], []
-    # batch = torch.tensor(range(batch_size)).reshape(-1, 1).expand(-1, n_nodes).reshape(-1).to(device)
-    # edges = knn_graph(coords, k=k, batch=batch, loop=False)
-    # edges = edges[[1, 0]]
 
     for i in range(batch_size):
         # k = min(k, len(coords[i]))
@@ -326,8 +274,6 @@ class SurfaceEncoder(nn.Module):
         self.encoder_layers = args.encoder_layers
         self.surf_aa_features = get_surface_aa_feature()  # [20, 5]
         self.k = args.knn
-        # self.pooling_encoder = FAEncoder(3, args.encoder_embed_dim, 2, 4, 0.1,
-        #                                  bidirectional=True, encoder_type='sru')
         self.pooling_encoder = FAEncoder(args.encoder_embed_dim+3, args.encoder_embed_dim, 2, 4, 0.1,
                                          bidirectional=True, encoder_type='sru')
 
@@ -335,10 +281,7 @@ class SurfaceEncoder(nn.Module):
     def build_encoder(cls, args):
         encoder = EGNN(in_node_nf=2, hidden_nf=args.encoder_embed_dim, out_node_nf=3,
                        in_edge_nf=0, device=device, n_layers=args.decoder_layers, attention=True)
-        # encoder = EGNN(in_node_nf=5, hidden_nf=args.encoder_embed_dim, out_node_nf=3,
-        #                in_edge_nf=0, device=device, n_layers=args.decoder_layers, attention=True)
         return encoder
-        # return FAEncoder(5+3, 128, 2, 4, 0.1, bidirectional=True, encoder_type='sru')
 
     def forward(
         self,
@@ -346,16 +289,7 @@ class SurfaceEncoder(nn.Module):
         aa_features,
         src_lengths,
     ):
-        """
-        Run the forward pass for an encoder-decoder model.
-        aa_identity_features: [B, L]
-        coor_features: [B, L, 4, 3]
-        prev_output_tokens: [B, L, N+1]
-        attention_score: [B, tgt len, src len]
 
-        Copied from the base class, but without ``**kwargs``,
-        which are not supported by TorchScript.
-        """
         # get surface chemical feature
         bs = coor_features.size(0)
         surf_aa_embs = torch.index_select(self.surf_aa_features, 0, aa_features.reshape(-1).long()).reshape(bs, -1, 2)
