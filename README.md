@@ -97,3 +97,13 @@ bash inverse_folding/scripts/sample.sh
 ### Evaluation
 
 Run `inverse_folding/inverse_folding/evaluate.py` or `inverse_folding/inverse_folding/evaluate_surface.py` to get the results.
+
+## Citation
+```
+@article{li2025ds,
+  title={DS-ProGen: A Dual-Structure Deep Language Model for Functional Protein Design},
+  author={Li, Yanting and Jiang, Jiyue and Wang, Zikang and Lin, Ziqian and He, Dongchen and Shan, Yuheng and Shao, Yanruisheng and Li, Jiayi and Shi, Xiangyu and Wang, Jiuming and others},
+  journal={arXiv preprint arXiv:2505.12511},
+  year={2025}
+}
+```
